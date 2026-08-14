@@ -22,7 +22,7 @@ as mapped by the approved specification.
 - `NBCC20-HPPRIME-001`
 - `NBCC20-F-001`
 - `NBCC20-CA0-CASE-001`
-- `NCC20-XD-001`
+- `NBCC20-XD-001`
 - `NBCC20-CA-X-001`
 - `NBCC20-PAR-CA0-001`
 - `NBCC20-PAR-XD-001`
@@ -60,8 +60,8 @@ Negative physical drift length is not returned; it becomes a documented `NO_DRIF
 
 ## Projection Boundary
 
-A projection with `l0 < 3.0 m` exempt according to the approved specification.
-``0 = 3.0 m` is not exempt.
+A projection with `l0 < 3.0 m` is exempt according to the approved specification.
+`l0 = 3.0 m` is not exempt.
 
 ## Figure Interpretation Limitation
 
