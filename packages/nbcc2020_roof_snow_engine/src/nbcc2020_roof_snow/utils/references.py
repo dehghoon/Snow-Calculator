@@ -1,0 +1,16 @@
+FORMULA_REFERENCES: dict[str, str] = {
+    "NBCC20-GAMMA-001": "NBCC 2020 Division B 4.1.6.13.(1)",
+    "NBCC20-CB-001": "NBCC 2020 Division B 4.1.6.2.(2)",
+    "NBCC20-CB-LOWHEIGHT-001": "NBCC 2020 Division B 4.1.6.2.(2)(c)",
+    "NBCC20-CW-001": "NBCC 2020 Division B 4.1.6.2.(3)-(4)",
+    "NBCC20-LCS-001": "NBCC 2020 Division B 4.1.6.5.(3)",
+    "NBCC20-HPPRIME-001": "NBCC 2020 Division B 4.1.6.5.(3)",
+    "NBCC20-F-001": "NBCC 2020 Division B 4.1.6.5.(3)",
+    "NBCC20-CA0-CASE-001": "NBCC 2020 Division B 4.1.6.5.(3)",
+    "NBCC20-XD-001": "NBCC 2020 Division B 4.1.6.5.(2)",
+    "NBCC20-CA-X-001": "NBCC 2020 Division B 4.1.6.5.(1)",
+    "NBCC20-PAR-CA0-001": "NBCC 2020 Division B 4.1.6.7.(1)(a)",
+    "NBCC20-PAR-XD-001": "NBCC 2020 Division B 4.1.6.7.(1)(b)",
+    "NBCC20-SR-001": "NBCC 2020 Division B 4.1.6.2.(1)",
+    "NBCC20-SNOW-001": "NBCC 2020 Division B 4.1.6.2.(1)",
+}
