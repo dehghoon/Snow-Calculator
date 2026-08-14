@@ -1,0 +1,1 @@
+"""Snow Calculator API package."""
