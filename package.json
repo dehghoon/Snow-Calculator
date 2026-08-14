@@ -1,0 +1,13 @@
+{
+  "name": "snow-calculator",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "web"
+  ],
+  "scripts": {
+    "build": "npm --workspace web run build",
+    "dev": "npm --workspace web run dev",
+    "test": "npm --workspace web run test"
+  }
+}
