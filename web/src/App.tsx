@@ -9,17 +9,46 @@ const modes: { value: CalculationMode; label: string }[] = [
 ];
 
 type HelpKey = "slope" | "surface" | "is" | "cw" | "cb";
-const help: Record<HelpKey, { title: string; text: string; visual: ReactNode }> = {
-  slope: { title: "Roof slope, α", text: "Angle of the roof surface measured from horizontal. Use the actual project roof slope.", visual: <svg viewBox="0 0 220 90" aria-hidden="true"><path d="M25 70H195M45 70L165 25"/><path d="M76 70A31 31 0 0 1 74 59"/><text x="82" y="61">α</text></svg> },
-  surface: { title: "Roof surface", text: "Normal is the standard roof-surface condition. Smooth / slippery identifies a surface where snow can slide more readily; select the condition that matches the roof assembly.", visual: <svg viewBox="0 0 220 90" aria-hidden="true"><path d="M20 65L90 30M125 65L195 30"/><circle cx="52" cy="43" r="5"/><path d="M154 44l22-11M172 31l-5 9"/><text x="30" y="82">Normal</text><text x="132" y="82">Smooth / slippery</text></svg> },
-  is: { title: "Importance factor, Is", text: "Select the snow-load importance factor required for the building's importance category under NBCC 2020.", visual: <svg viewBox="0 0 220 90" aria-hidden="true"><path d="M55 72V35L110 15l55 20v37M40 72h140M88 72V48h44v24"/><text x="92" y="43">Is</text></svg> },
-  cw: { title: "Wind exposure factor, Cw", text: "Represents the effect of wind exposure on roof snow. Choose the NBCC 2020 value that matches the site's exposure and roof condition.", visual: <svg viewBox="0 0 220 90" aria-hidden="true"><path d="M25 28h75M15 43h105M35 58h70M135 70V43l28-15 28 15v27M128 70h70"/><text x="56" y="23">wind</text><text x="151" y="61">Cw</text></svg> },
-  cb: { title: "Basic roof factor, Cb", text: "Basic roof snow factor used by the NBCC 2020 snow-load equation. Use the Code-prescribed value for the applicable roof condition.", visual: <svg viewBox="0 0 220 90" aria-hidden="true"><path d="M30 65h160M50 65l55-38 65 38"/><path d="M61 53h98" strokeDasharray="5 4"/><text x="96" y="48">Cb</text></svg> },
+const cbRows = [
+  [70,.80,.80,.80],[80,.82,.85,.91],[100,.85,.94,1.11],[120,.88,1.01,1.27],[140,.90,1.07,1.40],[160,.92,1.12,1.51],[180,.93,1.16,1.60],[200,.95,1.19,1.67],[220,.96,1.21,1.73],[240,.96,1.24,1.78],[260,.97,1.25,1.82],[280,.98,1.27,1.85],[300,.98,1.28,1.88],[320,.99,1.29,1.90],[340,.99,1.30,1.92],[360,.99,1.30,1.93],[380,.99,1.30,1.95],[400,.99,1.31,1.95],[420,.99,1.31,1.96],[440,1.00,1.32,1.96],[460,1.00,1.32,1.97],[480,1.00,1.32,1.98],[500,1.00,1.32,1.98],[520,1.00,1.33,1.98],[540,1.00,1.33,1.99],[560,1.00,1.33,1.99],[580,1.00,1.33,1.99],[600,1.00,1.33,1.99],[620,1.00,1.33,2.00],
+];
+
+const help: Record<HelpKey, { title: string; reference: string; visual: ReactNode; body: ReactNode }> = {
+  slope: {
+    title: "Roof slope, α",
+    reference: "NBCC 2020 4.1.6.2.(5)–(7)",
+    visual: <svg viewBox="0 0 220 90" aria-hidden="true"><path d="M25 70H195M45 70L165 25"/><path d="M76 70A31 31 0 0 1 74 59"/><text x="82" y="61">α</text></svg>,
+    body: <><p><b>Standard roof — Cs</b></p><table className="help-table"><tbody><tr><td>α ≤ 30°</td><td>Cs = 1.0</td></tr><tr><td>30° &lt; α ≤ 70°</td><td>Cs = (70° − α) / 40°</td></tr><tr><td>α &gt; 70°</td><td>Cs = 0</td></tr></tbody></table><p><b>Unobstructed slippery roof</b></p><table className="help-table"><tbody><tr><td>α ≤ 15°</td><td>Cs = 1.0</td></tr><tr><td>15° &lt; α ≤ 60°</td><td>Cs = (60° − α) / 45°</td></tr><tr><td>α &gt; 60°</td><td>Cs = 0</td></tr></tbody></table><p className="help-note">When Cs is used with accumulation factors for increased snow loads, NBCC states Cs = 1.0 unless otherwise stated in the Subsection.</p></>,
+  },
+  surface: {
+    title: "Roof surface",
+    reference: "NBCC 2020 4.1.6.2.(5)–(7)",
+    visual: <svg viewBox="0 0 220 90" aria-hidden="true"><path d="M20 65L90 30M125 65L195 30"/><circle cx="52" cy="43" r="5"/><path d="M154 44l22-11M172 31l-5 9"/><text x="30" y="82">Normal</text><text x="132" y="82">Slippery</text></svg>,
+    body: <><p><b>Normal</b> — use the standard roof-slope rules in Sentence (5).</p><p><b>Smooth / slippery</b> — use the special Sentence (6) rule only for an <b>unobstructed slippery roof where snow and ice can slide completely off the roof</b>.</p><p className="help-note">If snow cannot slide completely off because of obstructions or roof configuration, do not assume the slippery-roof reduction.</p></>,
+  },
+  is: {
+    title: "Importance factor, Is",
+    reference: "NBCC 2020 Table 4.1.6.2.-A",
+    visual: <svg viewBox="0 0 220 90" aria-hidden="true"><path d="M55 72V35L110 15l55 20v37M40 72h140M88 72V48h44v24"/><text x="92" y="43">Is</text></svg>,
+    body: <><p>Select the building Importance Category, then use the factor for the applicable limit state.</p><table className="help-table help-table-wide"><thead><tr><th>Importance category</th><th>ULS</th><th>SLS</th></tr></thead><tbody><tr><td>Low</td><td>0.80</td><td>0.90</td></tr><tr><td>Normal</td><td>1.00</td><td>0.90</td></tr><tr><td>High</td><td>1.15</td><td>0.90</td></tr><tr><td>Post-disaster</td><td>1.25</td><td>0.90</td></tr></tbody></table><p className="help-note">The building's Importance Category is established elsewhere in NBCC. Do not choose the category from occupancy name alone if the project classification is uncertain.</p></>,
+  },
+  cw: {
+    title: "Wind exposure factor, Cw",
+    reference: "NBCC 2020 4.1.6.2.(3)–(4)",
+    visual: <svg viewBox="0 0 220 90" aria-hidden="true"><path d="M25 28h75M15 43h105M35 58h70M135 70V43l28-15 28 15v27M128 70h70"/><text x="56" y="23">wind</text><text x="151" y="61">Cw</text></svg>,
+    body: <><div className="help-callout"><b>Default: Cw = 1.0</b><span>Use 1.0 except where the specific reduction in Sentence (4) is permitted.</span></div><p><b>Cw may be reduced to 0.75</b> only for buildings in the <b>Low or Normal Importance Categories</b>, in rural areas only or exposed areas north of the tree line, and only when all of these conditions are satisfied:</p><ul><li>Building is exposed on all sides to wind over open terrain and is expected to remain so during its life.</li><li>The roof area is exposed to wind on all sides with no significant roof obstruction nearby, such as parapet walls, within the Code-prescribed clearance distance.</li><li>The loading does <b>not</b> involve accumulation of snow due to drifting from adjacent surfaces.</li></ul><p className="help-note">For adjacent-surface drift calculations, keep Cw = 1.0.</p></>,
+  },
+  cb: {
+    title: "Basic roof factor, Cb",
+    reference: "NBCC 2020 4.1.6.2.(2) and Table 4.1.6.2.-B",
+    visual: <svg viewBox="0 0 220 90" aria-hidden="true"><path d="M30 65h160M50 65l55-38 65 38"/><path d="M61 53h98" strokeDasharray="5 4"/><text x="96" y="48">Cb</text></svg>,
+    body: <><div className="help-callout"><b>Quick rule</b><span>Cb = 0.80 when lc ≤ 70 / Cw².</span></div><p>For <b>lc &gt; 70 / Cw²</b>, use Table 4.1.6.2.-B. Linear interpolation is permitted for intermediate values of <b>lc Cw²</b> or <b>Cw</b>.</p><div className="help-table-scroll"><table className="help-table help-table-wide"><thead><tr><th>lc Cw²</th><th>Cw = 1.0</th><th>Cw = 0.75</th><th>Cw = 0.50</th></tr></thead><tbody>{cbRows.map(r => <tr key={r[0]}><td>{r[0]}</td><td>{Number(r[1]).toFixed(2)}</td><td>{Number(r[2]).toFixed(2)}</td><td>{Number(r[3]).toFixed(2)}</td></tr>)}</tbody></table></div><p className="help-note">NBCC also states Cb = 1.0 for a roof structure with mean height less than 1 + Ss/γ m above grade. Here lc is the characteristic roof length defined by the Code; γ is the specific weight of snow on roofs.</p></>,
+  },
 };
 
 function HelpButton({ id, open, setOpen }: { id: HelpKey; open: HelpKey|null; setOpen: (v: HelpKey|null) => void }) {
   const item = help[id];
-  return <span className="help-wrap"><button type="button" className="help-button" aria-label={`Help for ${item.title}`} aria-expanded={open === id} onClick={() => setOpen(open === id ? null : id)}>?</button>{open === id && <span className="help-popover" role="dialog"><span className="help-title">{item.title}</span><span className="help-visual">{item.visual}</span><span>{item.text}</span><small>NBCC 2020 selection guidance — verify the applicable Code provision for the project.</small></span>}</span>;
+  return <span className="help-wrap"><button type="button" className="help-button" aria-label={`Help for ${item.title}`} aria-expanded={open === id} onClick={() => setOpen(open === id ? null : id)}>?</button>{open === id && <span className="help-popover" role="dialog"><span className="help-title">{item.title}</span><span className="help-reference">{item.reference}</span><span className="help-visual">{item.visual}</span><span className="help-body">{item.body}</span><small>Selection aid based on the cited NBCC 2020 provision. Project-specific engineering judgment and jurisdictional requirements still apply.</small></span>}</span>;
 }
 
 function NumberField({ label, value, onChange, unit, readOnly = false, helpId, openHelp, setOpenHelp }: { label: string; value: number; onChange: (n: number) => void; unit?: string; readOnly?: boolean; helpId?: HelpKey; openHelp?: HelpKey|null; setOpenHelp?: (v: HelpKey|null) => void }) {
