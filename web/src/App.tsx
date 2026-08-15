@@ -1,5 +1,5 @@
-import { FormEvent, useMemo, useState } from "react";
-import { calculateRoofSnow } from "./api";
+import { FormEvent, useEffect, useMemo, useState } from "react";
+import { calculateRoofSnow, getClimaticLocation, getClimaticLocations, getClimaticProvinces } from "./api";
 import type { CalculationMode, CalculationRequest, CalculationResponse } from "./types";
 
 const modes: { value: CalculationMode; label: string }[] = [
@@ -8,14 +8,19 @@ const modes: { value: CalculationMode; label: string }[] = [
   { value: "ROOF_PROJECTION_OR_PARAPET", label: "Projection / parapet" },
 ];
 
-function NumberField({ label, value, onChange, unit }: { label: string; value: number; onChange: (n: number) => void; unit?: string }) {
-  return <label className="field"><span>{label}</span><div className="input"><input type="number" step="any" value={value} onChange={e => onChange(Number(e.target.value))}/><small>{unit}</small></div></label>;
+function NumberField({ label, value, onChange, unit, readOnly = false }: { label: string; value: number; onChange: (n: number) => void; unit?: string; readOnly?: boolean }) {
+  return <label className="field"><span>{label}</span><div className="input"><input type="number" step="any" value={value} readOnly={readOnly} onChange={e => onChange(Number(e.target.value))}/><small>{unit}</small></div></label>;
 }
 
 export default function App() {
   const [mode, setMode] = useState<CalculationMode>("UNIFORM_ROOF");
   const [ss, setSs] = useState(2.5);
   const [sr, setSr] = useState(0.4);
+  const [province, setProvince] = useState("");
+  const [location, setLocation] = useState("");
+  const [provinces, setProvinces] = useState<string[]>([]);
+  const [locations, setLocations] = useState<string[]>([]);
+  const [climaticSource, setClimaticSource] = useState("");
   const [slope, setSlope] = useState(10);
   const [surface, setSurface] = useState<"normal"|"smooth_slippery">("normal");
   const [isFactor, setIsFactor] = useState(1);
@@ -31,6 +36,40 @@ export default function App() {
   const [result, setResult] = useState<CalculationResponse|null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    getClimaticProvinces().then(setProvinces).catch(err => setError(err instanceof Error ? err.message : "Failed to load provinces."));
+  }, []);
+
+  async function changeProvince(nextProvince: string) {
+    setProvince(nextProvince);
+    setLocation("");
+    setLocations([]);
+    setClimaticSource("");
+    setResult(null);
+    if (!nextProvince) return;
+    try {
+      setError("");
+      setLocations(await getClimaticLocations(nextProvince));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load locations.");
+    }
+  }
+
+  async function changeLocation(nextLocation: string) {
+    setLocation(nextLocation);
+    setResult(null);
+    if (!province || !nextLocation) return;
+    try {
+      setError("");
+      const data = await getClimaticLocation(province, nextLocation);
+      setSs(data.ss);
+      setSr(data.sr);
+      setClimaticSource(data.source);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load climatic data.");
+    }
+  }
 
   const payload = useMemo<CalculationRequest>(() => {
     const base: CalculationRequest = {
@@ -66,9 +105,17 @@ export default function App() {
       <form className="panel" onSubmit={submit}>
         <div className="heading"><div><p className="eyebrow">INPUTS</p><h2>Snow parameters</h2></div></div>
         <label className="field"><span>Roof configuration</span><select value={mode} onChange={e => { setMode(e.target.value as CalculationMode); setResult(null); }}>{modes.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}</select></label>
+        <section className="mode">
+          <p><strong>Project location</strong></p>
+          <div className="grid">
+            <label className="field"><span>Province / territory</span><select value={province} onChange={e => changeProvince(e.target.value)}><option value="">Select province</option>{provinces.map(p => <option key={p} value={p}>{p}</option>)}</select></label>
+            <label className="field"><span>Location</span><select value={location} disabled={!province} onChange={e => changeLocation(e.target.value)}><option value="">{province ? "Select location" : "Select province first"}</option>{locations.map(l => <option key={l} value={l}>{l}</option>)}</select></label>
+          </div>
+          {climaticSource && <p className="note">Climatic values loaded automatically from {climaticSource}.</p>}
+        </section>
         <div className="grid">
-          <NumberField label="Ground snow load, Ss" unit="kPa" value={ss} onChange={setSs}/>
-          <NumberField label="Associated rain load, Sr" unit="kPa" value={sr} onChange={setSr}/>
+          <NumberField label="Ground snow load, Ss" unit="kPa" value={ss} onChange={setSs} readOnly={Boolean(location)}/>
+          <NumberField label="Associated rain load, Sr" unit="kPa" value={sr} onChange={setSr} readOnly={Boolean(location)}/>
           <NumberField label="Roof slope" unit="deg" value={slope} onChange={setSlope}/>
           <label className="field"><span>Roof surface</span><select value={surface} onChange={e => setSurface(e.target.value as typeof surface)}><option value="normal">Normal</option><option value="smooth_slippery">Smooth / slippery</option></select></label>
           <NumberField label="Importance factor, Is" value={isFactor} onChange={setIsFactor}/>
