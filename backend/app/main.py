@@ -13,6 +13,7 @@ if ENGINE_SRC.exists() and str(ENGINE_SRC) not in sys.path:
 
 from nbcc2020_roof_snow.validation.errors import InvalidInputError, InvalidRadicandError
 
+from .climatic_data import get_location_data, list_locations, list_provinces
 from .engine_adapter import calculate
 from .reporting import build_report_preview
 from .schemas import CalculationRequest, CalculationResponse, ErrorResponse, ReportPreviewResponse
@@ -47,6 +48,27 @@ def version() -> dict[str, str]:
         "engine_version": "0.1.0",
         "code_edition": "NBCC 2020",
     }
+
+
+@app.get("/api/v1/climatic/provinces")
+def climatic_provinces() -> dict[str, list[str]]:
+    return {"provinces": list_provinces()}
+
+
+@app.get("/api/v1/climatic/locations")
+def climatic_locations(province: str) -> dict[str, object]:
+    locations = list_locations(province)
+    if not locations:
+        raise HTTPException(status_code=404, detail={"code": "ERR_PROVINCE_NOT_FOUND", "detail": f"No climatic locations found for {province}."})
+    return {"province": province, "locations": locations}
+
+
+@app.get("/api/v1/climatic/location")
+def climatic_location(province: str, location: str) -> dict[str, object]:
+    record = get_location_data(province, location)
+    if record is None:
+        raise HTTPException(status_code=404, detail={"code": "ERR_LOCATION_NOT_FOUND", "detail": f"No climatic data found for {location}, {province}."})
+    return record
 
 
 @app.post(

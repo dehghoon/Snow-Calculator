@@ -1,6 +1,7 @@
-import { FormEvent, useMemo, useState } from "react";
-import { calculateRoofSnow } from "./api";
+import { FormEvent, ReactNode, useEffect, useMemo, useState } from "react";
+import { calculateRoofSnow, getClimaticLocation, getClimaticLocations, getClimaticProvinces } from "./api";
 import type { CalculationMode, CalculationRequest, CalculationResponse } from "./types";
+import "./workspace.css";
 
 const modes: { value: CalculationMode; label: string }[] = [
   { value: "UNIFORM_ROOF", label: "Uniform roof" },
@@ -8,114 +9,86 @@ const modes: { value: CalculationMode; label: string }[] = [
   { value: "ROOF_PROJECTION_OR_PARAPET", label: "Projection / parapet" },
 ];
 
-function NumberField({ label, value, onChange, unit }: { label: string; value: number; onChange: (n: number) => void; unit?: string }) {
-  return <label className="field"><span>{label}</span><div className="input"><input type="number" step="any" value={value} onChange={e => onChange(Number(e.target.value))}/><small>{unit}</small></div></label>;
+type HelpKey = "slope" | "surface" | "is" | "cw" | "cb" | "l" | "w" | "lc" | "case" | "ls" | "ws" | "h" | "hp";
+type DesktopTab = "workspace" | "report";
+type MobileTab = "input" | "results" | "report";
+
+const help: Record<HelpKey, { title: string; reference: string; visual: ReactNode; body: ReactNode }> = {
+  slope: { title: "Roof slope, α", reference: "Project geometry input", visual: <svg viewBox="0 0 220 90"><path d="M25 70H195M45 70L165 25"/><path d="M76 70A31 31 0 0 1 74 59"/><text x="82" y="61">α</text></svg>, body: <><p>Enter the actual roof angle measured from horizontal.</p><p className="help-note">The engine calculates the applicable slope factor internally from the roof slope and surface condition.</p></> },
+  surface: { title: "Roof surface", reference: "NBCC 2020 4.1.6.2.(5)–(7)", visual: <svg viewBox="0 0 220 90"><path d="M20 65L90 30M125 65L195 30"/><circle cx="52" cy="43" r="5"/><path d="M154 44l22-11M172 31l-5 9"/><text x="30" y="82">Normal</text><text x="132" y="82">Slippery</text></svg>, body: <><p><b>Normal</b> — ordinary roof surface condition.</p><p><b>Smooth / slippery</b> — use only where the roof is unobstructed and snow and ice can slide completely off the roof.</p><p className="help-note">If parapets, obstructions or roof geometry prevent complete sliding, do not assume the slippery-roof condition.</p></> },
+  is: { title: "Importance factor, Is", reference: "NBCC 2020 Table 4.1.6.2.-A", visual: <svg viewBox="0 0 220 90"><path d="M55 72V35L110 15l55 20v37M40 72h140M88 72V48h44v24"/><text x="92" y="43">Is</text></svg>, body: <><p>Select the building Importance Category and use the factor for the applicable limit state.</p><table className="help-table help-table-wide"><thead><tr><th>Importance category</th><th>ULS</th><th>SLS</th></tr></thead><tbody><tr><td>Low</td><td>0.80</td><td>0.90</td></tr><tr><td>Normal</td><td>1.00</td><td>0.90</td></tr><tr><td>High</td><td>1.15</td><td>0.90</td></tr><tr><td>Post-disaster</td><td>1.25</td><td>0.90</td></tr></tbody></table><p className="help-note">Use the project's NBCC Importance Category.</p></> },
+  cw: { title: "Wind exposure factor, Cw", reference: "NBCC 2020 4.1.6.2.(3)–(4)", visual: <svg viewBox="0 0 220 90"><path d="M25 28h75M15 43h105M35 58h70M135 70V43l28-15 28 15v27M128 70h70"/><text x="56" y="23">wind</text><text x="151" y="61">Cw</text></svg>, body: <><div className="help-callout"><b>Default: Cw = 1.0</b><span>Use 1.0 unless the NBCC reduction conditions are fully satisfied.</span></div><p><b>Cw = 0.75</b> may be used only for qualifying Low or Normal Importance buildings where all required open-terrain/exposure conditions are met and the loading does not involve accumulation from adjacent-surface drifting.</p><p className="help-note">For adjacent-surface drift, use Cw = 1.0.</p></> },
+  l: { title: "Larger plan dimension, l", reference: "NBCC 2020 4.1.6.2.(2)", visual: <svg viewBox="0 0 220 90"><rect x="25" y="22" width="170" height="48"/><path d="M35 79H185"/><text x="104" y="87">l</text></svg>, body: <><p><b>l</b> is the larger plan dimension of the applicable roof, in metres.</p><p className="help-note">Use l ≥ w and l &gt; 0.</p></> },
+  w: { title: "Smaller plan dimension, w", reference: "NBCC 2020 4.1.6.2.(2)", visual: <svg viewBox="0 0 220 90"><rect x="42" y="15" width="136" height="60"/><path d="M31 21V69"/><text x="14" y="49">w</text></svg>, body: <><p><b>w</b> is the smaller plan dimension of the applicable roof.</p><p className="help-note">Use 0 ≤ w ≤ l.</p></> },
+  lc: { title: "Characteristic roof length, lc", reference: "NBCC 2020 4.1.6.2.(2)", visual: <svg viewBox="0 0 220 90"><rect x="32" y="18" width="156" height="54"/><text x="72" y="48">lc = 2w − w²/l</text></svg>, body: <><div className="help-callout"><b>Calculated automatically</b><span>lc = 2w − w²/l</span></div><p>lc is derived from the entered plan dimensions and is not a direct user input.</p></> },
+  cb: { title: "Calculated basic roof factor, Cb", reference: "NBCC 2020 4.1.6.2.(2)", visual: <svg viewBox="0 0 220 90"><path d="M30 65h160M50 65l55-38 65 38"/><text x="89" y="50">Cb</text></svg>, body: <><div className="help-callout"><b>Calculated automatically</b><span>Cb = 0.80 when lc ≤ 70/Cw².</span></div><p>For lc &gt; 70/Cw²: <b>Cb = (1/Cw)[1 − (1 − 0.8Cw) exp(−(lcCw² − 70)/100)]</b>.</p><p className="help-note">The separate NBCC low-mean-roof-height condition is not automated in this branch.</p></> },
+  case: { title: "Lower-roof source case", reference: "Commentary G Figure G-2", visual: <svg viewBox="0 0 220 90"><rect x="18" y="24" width="52" height="40"/><rect x="84" y="36" width="52" height="28"/><rect x="150" y="36" width="52" height="28"/><text x="35" y="19">I</text><text x="103" y="31">II</text><text x="170" y="31">III</text></svg>, body: <><table className="help-table"><tbody><tr><td><b>Case I</b></td><td>Upper-roof source; β = 1.00.</td></tr><tr><td><b>Case II</b></td><td>Applicable lower-roof source toward the step; β = 0.67.</td></tr><tr><td><b>Case III</b></td><td>Alternate lower-roof source/direction where geometry permits; β = 0.67.</td></tr></tbody></table><p className="help-note">Each case has its own source area and ls / ws mapping.</p></> },
+  ls: { title: "Source length, ls", reference: "Commentary G Figure G-2", visual: <svg viewBox="0 0 220 90"><rect x="28" y="25" width="164" height="42"/><path d="M45 76H175"/><text x="103" y="84">ls</text></svg>, body: <><p><b>ls</b> is the physical source-area length for the selected drift case.</p><p className="help-note">Use verified project geometry.</p></> },
+  ws: { title: "Source width, ws", reference: "Commentary G Figure G-2", visual: <svg viewBox="0 0 220 90"><rect x="48" y="15" width="124" height="60"/><path d="M37 21V69"/><text x="19" y="49">ws</text></svg>, body: <><p><b>ws</b> is the physical source-area width for the selected drift case.</p><p className="help-note">Each applicable case can have a different ws.</p></> },
+  h: { title: "Roof step height, h", reference: "NBCC Figure 4.1.6.5.-A", visual: <svg viewBox="0 0 220 90"><path d="M25 30H100V65H195"/><path d="M115 31V64"/><text x="122" y="51">h</text></svg>, body: <><p><b>h</b> is the vertical roof-level difference at the step creating the sheltered lower-roof condition.</p></> },
+  hp: { title: "Parapet height, hp", reference: "NBCC Figure 4.1.6.5.-A / Commentary geometry", visual: <svg viewBox="0 0 220 90"><path d="M25 58H180M55 58V27"/><path d="M70 27V58"/><text x="77" y="45">hp</text></svg>, body: <><p><b>hp</b> is the actual vertical parapet height above the applicable roof surface.</p></> },
+};
+
+function HelpButton({ id, open, setOpen }: { id: HelpKey; open: HelpKey|null; setOpen: (v: HelpKey|null) => void }) {
+  const item = help[id];
+  return <span className="help-wrap"><button type="button" className="help-button" aria-label={`Help for ${item.title}`} aria-expanded={open === id} onClick={() => setOpen(open === id ? null : id)}>?</button>{open === id && <span className="help-popover" role="dialog" aria-label={item.title}><button type="button" className="help-close" aria-label="Close help" onClick={() => setOpen(null)}>×</button><span className="help-title">{item.title}</span><span className="help-reference">{item.reference}</span><span className="help-visual">{item.visual}</span><span className="help-body">{item.body}</span><small>Selection aid based on the cited NBCC 2020 / approved geometry guidance.</small></span>}</span>;
+}
+
+function NumberField({ label, value, onChange, unit, readOnly = false, helpId, openHelp, setOpenHelp }: { label: string; value: number; onChange: (n: number) => void; unit?: string; readOnly?: boolean; helpId?: HelpKey; openHelp?: HelpKey|null; setOpenHelp?: (v: HelpKey|null) => void }) {
+  const [draft, setDraft] = useState(String(value));
+  useEffect(() => { setDraft(String(value)); }, [value]);
+  function edit(next: string) { setDraft(next); if (next.trim() === "" || next === "-" || next === "." || next === "-.") return; const n = Number(next); if (Number.isFinite(n)) onChange(n); }
+  function finish() { const n = Number(draft); if (draft.trim() === "" || !Number.isFinite(n)) setDraft(String(value)); else onChange(n); }
+  return <label className="field"><span className="field-label">{label}{helpId && setOpenHelp && <HelpButton id={helpId} open={openHelp ?? null} setOpen={setOpenHelp}/>}</span><div className="input"><input type="text" inputMode="decimal" value={draft} readOnly={readOnly} onChange={e => edit(e.target.value)} onBlur={finish}/><small>{unit}</small></div></label>;
+}
+
+function ReferenceFigure({ src, title, reference }: { src: string; title: string; reference: string }) { return <aside className="engineering-figure" aria-label={title}><div className="figure-heading"><div><span>GEOMETRY REFERENCE</span><b>{title}</b></div><small>{reference}</small></div><img src={src} alt={title}/><p>Use this diagram to identify physical dimensions only. Enter verified project dimensions; do not scale values from the figure.</p></aside>; }
+
+function ResultsView({ result, peak, cb, cbThreshold, roofL, roofW, lc, lcCw2 }: { result: CalculationResponse|null; peak: unknown; cb: number; cbThreshold: number; roofL: number; roofW: number; lc: number; lcCw2: number }) {
+  return <section className="panel results"><div className="heading"><div><p className="eyebrow">RESULTS</p><h2>Governing calculation</h2></div>{result && <span className="status">{result.calculation_status}</span>}</div>{!result ? <div className="empty"><b>Ready to calculate</b><span>Run the validated NBCC 2020 engine to review results.</span></div> : <><div className="cards"><article><span>Peak / governing snow load</span><b>{typeof peak === "number" ? `${peak.toFixed(3)} kPa` : "—"}</b></article><article><span>Snow density, γ</span><b>{Number(result.derived_parameters["gamma_kn_m3"]).toFixed(3)} kN/m³</b></article><article><span>Calculated slope factor, Cs</span><b>{Number(result.derived_parameters["cs"]).toFixed(3)}</b></article><article><span>Calculated Cb</span><b>{cb.toFixed(3)}</b></article><article><span>70 / Cw²</span><b>{Number.isFinite(cbThreshold) ? `${cbThreshold.toFixed(3)} m` : "—"}</b></article></div>{result.warnings.length > 0 && <div className="warning"><b>Engineering warnings</b>{result.warnings.map(w => <span key={w}>{w}</span>)}</div>}<h3>Load distribution</h3><div className="table"><div className="row head"><span>x (m)</span><span>Ca</span><span>S (kPa)</span></div>{result.distribution_segments.map((p, i) => <div className="row" key={i}><span>{Number(p.x_m).toFixed(2)}</span><span>{Number(p.ca).toFixed(3)}</span><span>{Number(p.snow_load_kpa).toFixed(3)}</span></div>)}</div><details><summary>Engineering trace</summary><pre>{JSON.stringify({ cb_inputs: { l: roofL, w: roofW, lc, lc_cw2: lcCw2, threshold_70_over_cw2: cbThreshold, cb }, governing_case: result.governing_case, projection_result: result.projection_result, references: result.references, validation_trace: result.validation_trace }, null, 2)}</pre></details></>}</section>;
+}
+
+function ReportView({ result, payload, peak, cb, cbThreshold, lc }: { result: CalculationResponse|null; payload: CalculationRequest; peak: unknown; cb: number; cbThreshold: number; lc: number }) {
+  return <section className="reportPanel"><div className="reportHeader"><div><p className="eyebrow">ENGINEERING CALCULATION REPORT</p><h2>NBCC 2020 Roof Snow Report</h2></div><div className="reportActions"><button type="button" disabled={!result} onClick={() => window.print()}>Generate PDF</button></div></div>{!result ? <div className="reportEmpty">Run the calculation first. The report will appear here from the current calculated result.</div> : <article className="calcReport"><section className="calcPage"><div className="calcDocHeader"><div><strong>LinkoTech Engineering</strong><span>Roof Snow Calculation</span></div><div><b>Code</b><span>NBCC 2020</span><b>Configuration</b><span>{payload.mode}</span></div><div><b>Status</b><span>{result.calculation_status}</span><b>Location</b><span>{String(result.inputs?.location ?? "Project input")}</span></div></div><div className="calcTitle"><b>Title:</b><span>NBCC 2020 Roof Snow Load Calculation</span></div><div className="reportGrid"><div className="reportItem"><span>Ground snow load, Ss</span><b>{payload.common.ss.toFixed(3)} kPa</b></div><div className="reportItem"><span>Associated rain load, Sr</span><b>{payload.common.sr_climatic.toFixed(3)} kPa</b></div><div className="reportItem"><span>Importance factor, Is</span><b>{payload.common.is}</b></div><div className="reportItem"><span>Wind exposure factor, Cw</span><b>{payload.common.cw}</b></div><div className="reportItem"><span>Characteristic roof length, lc</span><b>{Number.isFinite(lc) ? lc.toFixed(3) : "—"} m</b></div><div className="reportItem"><span>70 / Cw²</span><b>{Number.isFinite(cbThreshold) ? cbThreshold.toFixed(3) : "—"} m</b></div><div className="reportItem"><span>Basic roof factor, Cb</span><b>{cb.toFixed(3)}</b></div><div className="reportItem"><span>Roof slope</span><b>{payload.common.roof_slope_alpha.toFixed(2)}°</b></div></div></section><section className="calcPage"><h2>Calculated Results</h2><div className="reportGrid"><div className="reportItem"><span>Peak / governing snow load</span><b>{typeof peak === "number" ? `${peak.toFixed(3)} kPa` : "—"}</b></div><div className="reportItem"><span>Slope factor, Cs</span><b>{Number(result.derived_parameters["cs"]).toFixed(3)}</b></div><div className="reportItem"><span>Snow density, γ</span><b>{Number(result.derived_parameters["gamma_kn_m3"]).toFixed(3)} kN/m³</b></div><div className="reportItem"><span>Governing case</span><b>{String(result.governing_case?.case_id ?? result.projection_result?.governing_limit ?? "Uniform")}</b></div></div>{result.warnings.length > 0 && <div className="reportWarning"><b>Warnings</b>{result.warnings.map(w => <div key={w}>{w}</div>)}</div>}<h3>Load distribution</h3><table className="reportTable"><thead><tr><th>x (m)</th><th>Ca</th><th>Snow load (kPa)</th></tr></thead><tbody>{result.distribution_segments.map((p,i)=><tr key={i}><td>{Number(p.x_m).toFixed(2)}</td><td>{Number(p.ca).toFixed(3)}</td><td>{Number(p.snow_load_kpa).toFixed(3)}</td></tr>)}</tbody></table></section><section className="calcPage"><h2>Engineering Trace & References</h2><pre>{JSON.stringify({ interpreted_geometry: result.interpreted_geometry, governing_case: result.governing_case, projection_result: result.projection_result, references: result.references, validation_trace: result.validation_trace }, null, 2)}</pre></section></article>}</section>;
 }
 
 export default function App() {
   const [mode, setMode] = useState<CalculationMode>("UNIFORM_ROOF");
-  const [ss, setSs] = useState(2.5);
-  const [sr, setSr] = useState(0.4);
-  const [slope, setSlope] = useState(10);
-  const [surface, setSurface] = useState<"normal"|"smooth_slippery">("normal");
-  const [isFactor, setIsFactor] = useState(1);
-  const [cw, setCw] = useState(1);
-  const [cb, setCb] = useState(0.8);
+  const [ss, setSs] = useState(2.5), [sr, setSr] = useState(0.4);
+  const [province, setProvince] = useState(""), [location, setLocation] = useState("");
+  const [provinces, setProvinces] = useState<string[]>([]), [locations, setLocations] = useState<string[]>([]), [climaticSource, setClimaticSource] = useState("");
+  const [slope, setSlope] = useState(10), [isFactor, setIsFactor] = useState(1), [cw, setCw] = useState(1);
+  const [roofL, setRoofL] = useState(30), [roofW, setRoofW] = useState(20);
+  const [surface, setSurface] = useState<"normal"|"smooth_slippery">("normal"), [openHelp, setOpenHelp] = useState<HelpKey|null>(null);
   const [caseId, setCaseId] = useState<"I"|"II"|"III">("I");
-  const [ls, setLs] = useState(20);
-  const [ws, setWs] = useState(10);
-  const [stepHeight, setStepHeight] = useState(2);
-  const [parapetHeight, setParapetHeight] = useState(0);
-  const [projectionHeight, setProjectionHeight] = useState(1);
-  const [projectionLength, setProjectionLength] = useState(3);
-  const [result, setResult] = useState<CalculationResponse|null>(null);
-  const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [ls, setLs] = useState(20), [ws, setWs] = useState(10), [stepHeight, setStepHeight] = useState(2), [parapetHeight, setParapetHeight] = useState(0);
+  const [projectionHeight, setProjectionHeight] = useState(1), [projectionLength, setProjectionLength] = useState(3);
+  const [result, setResult] = useState<CalculationResponse|null>(null), [error, setError] = useState(""), [busy, setBusy] = useState(false);
+  const [desktopTab, setDesktopTab] = useState<DesktopTab>("workspace"), [mobileTab, setMobileTab] = useState<MobileTab>("input");
+
+  useEffect(() => { getClimaticProvinces().then(setProvinces).catch(err => setError(err instanceof Error ? err.message : "Failed to load provinces.")); }, []);
+  async function changeProvince(next: string) { setProvince(next); setLocation(""); setLocations([]); setClimaticSource(""); setResult(null); if (!next) return; try { setError(""); setLocations(await getClimaticLocations(next)); } catch (err) { setError(err instanceof Error ? err.message : "Failed to load locations."); } }
+  async function changeLocation(next: string) { setLocation(next); setResult(null); if (!province || !next) return; try { setError(""); const data = await getClimaticLocation(province, next); setSs(data.ss); setSr(data.sr); setClimaticSource(data.source); } catch (err) { setError(err instanceof Error ? err.message : "Failed to load climatic data."); } }
+
+  const lc = roofL > 0 ? 2 * roofW - (roofW * roofW) / roofL : NaN;
+  const cbThreshold = cw > 0 ? 70 / (cw * cw) : NaN;
+  const lcCw2 = Number.isFinite(lc) ? lc * cw * cw : NaN;
+  const cb = cw > 0 && Number.isFinite(lc) ? (lc <= cbThreshold ? 0.8 : (1 / cw) * (1 - (1 - 0.8 * cw) * Math.exp(-(lcCw2 - 70) / 100))) : 0.8;
 
   const payload = useMemo<CalculationRequest>(() => {
-    const base: CalculationRequest = {
-      mode,
-      common: { ss, sr_climatic: sr, roof_slope_alpha: slope, roof_surface_type: surface, is: isFactor, cw, cb, adjacent_surface_drift_applicable: mode === "LOWER_ADJACENT_ROOF" },
-      distribution_points: 10,
-    };
-    if (mode === "LOWER_ADJACENT_ROOF") base.lower_roof_cases = [{
-      case_id: caseId, source_surface: "Upper roof", receiving_surface: "Lower roof", drift_direction: "Toward roof step",
-      ls, ws, step_height: stepHeight, parapet_height: parapetHeight, applicability_status: "APPLICABLE",
-      interpretation_note: "Explicit structured case geometry"
-    }];
+    const base: CalculationRequest = { mode, common: { ss, sr_climatic: sr, roof_slope_alpha: slope, roof_surface_type: surface, is: isFactor, cw, cb, adjacent_surface_drift_applicable: mode === "LOWER_ADJACENT_ROOF" }, distribution_points: 10 };
+    if (mode === "LOWER_ADJACENT_ROOF") base.lower_roof_cases = [{ case_id: caseId, source_surface: "Upper roof", receiving_surface: "Lower roof", drift_direction: "Toward roof step", ls, ws, step_height: stepHeight, parapet_height: parapetHeight, applicability_status: "APPLICABLE", interpretation_note: "Explicit structured case geometry" }];
     if (mode === "ROOF_PROJECTION_OR_PARAPET") base.projection = { projection_height: projectionHeight, projection_longest_dimension: projectionLength };
     return base;
   }, [mode, ss, sr, slope, surface, isFactor, cw, cb, caseId, ls, ws, stepHeight, parapetHeight, projectionHeight, projectionLength]);
 
-  async function submit(e: FormEvent) {
-    e.preventDefault(); setBusy(true); setError("");
-    try { setResult(await calculateRoofSnow(payload)); }
-    catch (err) { setResult(null); setError(err instanceof Error ? err.message : "Calculation failed."); }
-    finally { setBusy(false); }
-  }
-
+  async function submit(e: FormEvent) { e.preventDefault(); setBusy(true); setError(""); if (!(roofL > 0) || !(roofW >= 0) || roofW > roofL || !(cw > 0)) { setBusy(false); setResult(null); setError("Check Cb geometry inputs: use l > 0, 0 ≤ w ≤ l, and Cw > 0."); return; } try { const next = await calculateRoofSnow(payload); setResult(next); setMobileTab("results"); } catch (err) { setResult(null); setError(err instanceof Error ? err.message : "Calculation failed."); } finally { setBusy(false); } }
   const peak = result?.final_results["peak_snow_load_kpa"] ?? result?.final_results["governing_snow_load_kpa"];
 
-  return <main>
-    <header className="hero">
-      <div><p className="eyebrow">LINKOTECH ENGINEERING</p><h1>NBCC 2020 Roof Snow Calculator</h1><p>Validated Agent #2 calculation engine with traceable inputs, warnings and report-ready results.</p></div>
-      <span className="badge">NBCC 2020</span>
-    </header>
+  const inputPanel = <form className="panel" onSubmit={submit}><div className="heading"><div><p className="eyebrow">INPUTS</p><h2>Snow parameters</h2></div></div><label className="field"><span>Roof configuration</span><select value={mode} onChange={e => { setMode(e.target.value as CalculationMode); setResult(null); setOpenHelp(null); }}>{modes.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}</select></label><section className="mode"><p><strong>Project location</strong></p><div className="grid"><label className="field"><span>Province / territory</span><select value={province} onChange={e => changeProvince(e.target.value)}><option value="">Select province</option>{provinces.map(p => <option key={p}>{p}</option>)}</select></label><label className="field"><span>Location</span><select value={location} disabled={!province} onChange={e => changeLocation(e.target.value)}><option value="">{province ? "Select location" : "Select province first"}</option>{locations.map(l => <option key={l}>{l}</option>)}</select></label></div>{climaticSource && <p className="note">Climatic values loaded automatically from {climaticSource}.</p>}</section><div className="grid"><NumberField label="Ground snow load, Ss" unit="kPa" value={ss} onChange={setSs} readOnly={Boolean(location)}/><NumberField label="Associated rain load, Sr" unit="kPa" value={sr} onChange={setSr} readOnly={Boolean(location)}/><NumberField label="Roof slope, α" unit="deg" value={slope} onChange={setSlope} helpId="slope" openHelp={openHelp} setOpenHelp={setOpenHelp}/><label className="field"><span className="field-label">Roof surface<HelpButton id="surface" open={openHelp} setOpen={setOpenHelp}/></span><select value={surface} onChange={e => setSurface(e.target.value as typeof surface)}><option value="normal">Normal</option><option value="smooth_slippery">Smooth / slippery</option></select></label><NumberField label="Importance factor, Is" value={isFactor} onChange={setIsFactor} helpId="is" openHelp={openHelp} setOpenHelp={setOpenHelp}/><NumberField label="Wind exposure factor, Cw" value={cw} onChange={setCw} helpId="cw" openHelp={openHelp} setOpenHelp={setOpenHelp}/></div><section className="mode"><p><strong>Basic roof factor geometry</strong></p><p className="note">Cb is calculated automatically from the NBCC 2020 characteristic roof length method.</p><div className="grid"><NumberField label="Larger plan dimension, l" unit="m" value={roofL} onChange={setRoofL} helpId="l" openHelp={openHelp} setOpenHelp={setOpenHelp}/><NumberField label="Smaller plan dimension, w" unit="m" value={roofW} onChange={setRoofW} helpId="w" openHelp={openHelp} setOpenHelp={setOpenHelp}/><NumberField label="Characteristic length, lc" unit="m" value={Number.isFinite(lc) ? lc : 0} onChange={() => {}} readOnly helpId="lc" openHelp={openHelp} setOpenHelp={setOpenHelp}/><NumberField label="Calculated basic roof factor, Cb" value={cb} onChange={() => {}} readOnly helpId="cb" openHelp={openHelp} setOpenHelp={setOpenHelp}/></div>{roofW > roofL && <div className="error">w is defined as the smaller plan dimension. Use w ≤ l.</div>}<div className="cards cb-results"><article><span>lc Cw²</span><b>{Number.isFinite(lcCw2) ? lcCw2.toFixed(3) : "—"}</b></article><article><span>70 / Cw²</span><b>{Number.isFinite(cbThreshold) ? `${cbThreshold.toFixed(3)} m` : "—"}</b></article><article><span>Calculated Cb</span><b>{cb.toFixed(3)}</b></article></div></section>{mode === "LOWER_ADJACENT_ROOF" && <div className="input-figure-layout"><section className="mode geometry-inputs"><p><strong>Source-area geometry</strong></p><label className="field"><span className="field-label">Case<HelpButton id="case" open={openHelp} setOpen={setOpenHelp}/></span><select value={caseId} onChange={e => setCaseId(e.target.value as typeof caseId)}><option>I</option><option>II</option><option>III</option></select></label><div className="grid"><NumberField label="Source length, ls" unit="m" value={ls} onChange={setLs} helpId="ls" openHelp={openHelp} setOpenHelp={setOpenHelp}/><NumberField label="Source width, ws" unit="m" value={ws} onChange={setWs} helpId="ws" openHelp={openHelp} setOpenHelp={setOpenHelp}/><NumberField label="Roof step height, h" unit="m" value={stepHeight} onChange={setStepHeight} helpId="h" openHelp={openHelp} setOpenHelp={setOpenHelp}/><NumberField label="Parapet height, hp" unit="m" value={parapetHeight} onChange={setParapetHeight} helpId="hp" openHelp={openHelp} setOpenHelp={setOpenHelp}/></div>{cw !== 1 && <div className="error">Adjacent-surface drift requires Cw = 1.0.</div>}</section><ReferenceFigure src="/figures/lower-adjacent-roof.svg" title="Lower adjacent roof / drift geometry" reference="NBCC Figure 4.1.6.5.-A / Commentary geometry"/></div>}{mode === "ROOF_PROJECTION_OR_PARAPET" && <div className="input-figure-layout"><section className="mode geometry-inputs"><p><strong>Projection / parapet geometry</strong></p><div className="grid"><NumberField label="Projection height, h" unit="m" value={projectionHeight} onChange={setProjectionHeight}/><NumberField label="Longest dimension, l0" unit="m" value={projectionLength} onChange={setProjectionLength}/></div></section><ReferenceFigure src="/figures/projection-parapet.svg" title="Roof obstruction / parapet drift geometry" reference="Workbook Figure G-8"/></div>}<button className="primary" disabled={busy}>{busy ? "Calculating…" : "Run calculation"}</button>{error && <div className="error">{error}</div>}</form>;
 
-    <div className="layout">
-      <form className="panel" onSubmit={submit}>
-        <div className="heading"><div><p className="eyebrow">INPUTS</p><h2>Snow parameters</h2></div></div>
-        <label className="field"><span>Roof configuration</span><select value={mode} onChange={e => { setMode(e.target.value as CalculationMode); setResult(null); }}>{modes.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}</select></label>
-        <div className="grid">
-          <NumberField label="Ground snow load, Ss" unit="kPa" value={ss} onChange={setSs}/>
-          <NumberField label="Associated rain load, Sr" unit="kPa" value={sr} onChange={setSr}/>
-          <NumberField label="Roof slope" unit="deg" value={slope} onChange={setSlope}/>
-          <label className="field"><span>Roof surface</span><select value={surface} onChange={e => setSurface(e.target.value as typeof surface)}><option value="normal">Normal</option><option value="smooth_slippery">Smooth / slippery</option></select></label>
-          <NumberField label="Importance factor, Is" value={isFactor} onChange={setIsFactor}/>
-          <NumberField label="Wind exposure factor, Cw" value={cw} onChange={setCw}/>
-          <NumberField label="Basic roof factor, Cb" value={cb} onChange={setCb}/>
-        </div>
+  const resultsPanel = <ResultsView result={result} peak={peak} cb={cb} cbThreshold={cbThreshold} roofL={roofL} roofW={roofW} lc={lc} lcCw2={lcCw2}/>;
+  const reportPanel = <ReportView result={result} payload={payload} peak={peak} cb={cb} cbThreshold={cbThreshold} lc={lc}/>;
 
-        {mode === "LOWER_ADJACENT_ROOF" && <section className="mode">
-          <p><strong>Source-area geometry</strong></p>
-          <p className="note">Enter verified project dimensions only. Do not scale dimensions from code figures.</p>
-          <label className="field"><span>Case</span><select value={caseId} onChange={e => setCaseId(e.target.value as typeof caseId)}><option>I</option><option>II</option><option>III</option></select></label>
-          <div className="grid">
-            <NumberField label="Source length, ls" unit="m" value={ls} onChange={setLs}/>
-            <NumberField label="Source width, ws" unit="m" value={ws} onChange={setWs}/>
-            <NumberField label="Roof step height" unit="m" value={stepHeight} onChange={setStepHeight}/>
-            <NumberField label="Parapet height" unit="m" value={parapetHeight} onChange={setParapetHeight}/>
-          </div>
-          {cw !== 1 && <div className="error">Adjacent-surface drift requires Cw = 1.0.</div>}
-        </section>}
-
-        {mode === "ROOF_PROJECTION_OR_PARAPET" && <section className="mode"><div className="grid">
-          <NumberField label="Projection height" unit="m" value={projectionHeight} onChange={setProjectionHeight}/>
-          <NumberField label="Longest dimension, l0" unit="m" value={projectionLength} onChange={setProjectionLength}/>
-        </div></section>}
-
-        <button className="primary" disabled={busy}>{busy ? "Calculating…" : "Run calculation"}</button>
-        {error && <div className="error">{error}</div>}
-      </form>
-
-      <section className="panel results">
-        <div className="heading"><div><p className="eyebrow">RESULTS</p><h2>Governing calculation</h2></div>{result && <span className="status">{result.calculation_status}</span>}</div>
-        {!result ? <div className="empty"><b>Ready to calculate</b><span>Run the validated NBCC 2020 engine to review results.</span></div> :
-        <>
-          <div className="cards">
-            <article><span>Peak / governing snow load</span><b>{typeof peak === "number" ? `${peak.toFixed(3)} kPa` : "—"}</b></article>
-            <article><span>Snow density, γ</span><b>{Number(result.derived_parameters["gamma_kn_m3"]).toFixed(3)} kN/m³</b></article>
-            <article><span>Slope factor, Cs</span><b>{Number(result.derived_parameters["cs"]).toFixed(3)}</b></article>
-          </div>
-          {result.warnings.length > 0 && <div className="warning"><b>Engineering warnings</b>{result.warnings.map(w => <span key={w}>{w}</span>)}</div>}
-          <h3>Load distribution</h3>
-          <div className="table"><div className="row head"><span>x (m)</span><span>Ca</span><span>S (kPa)</span></div>{result.distribution_segments.map((p, i) => <div className="row" key={i}><span>{Number(p.x_m).toFixed(2)}</span><span>{Number(p.ca).toFixed(3)}</span><span>{Number(p.snow_load_kpa).toFixed(3)}</span></div>)}</div>
-          <details><summary>Engineering trace</summary><pre>{JSON.stringify({ governing_case: result.governing_case, projection_result: result.projection_result, references: result.references, validation_trace: result.validation_trace }, null, 2)}</pre></details>
-          <div className="report"><b>Report preview available</b><span>Official PDF requires authenticated server-side report entitlement.</span></div>
-        </>}
-      </section>
-    </div>
-
-    <footer>Calculations use unrounded engine values. Professional release remains subject to review by the responsible licensed engineer.</footer>
-  </main>;
+  return <main><header className="hero"><div><p className="eyebrow">LINKOTECH ENGINEERING</p><h1>NBCC 2020 Roof Snow Calculator</h1><p>Validated calculation engine with traceable inputs, engineering geometry and report-ready results.</p></div><span className="badge">NBCC 2020</span></header><nav className="desktopToolTabs" aria-label="Desktop Tool Views"><button type="button" className={desktopTab === "workspace" ? "active" : ""} onClick={() => setDesktopTab("workspace")}>Input &amp; Results</button><button type="button" className={desktopTab === "report" ? "active" : ""} onClick={() => setDesktopTab("report")}>Report</button></nav><div className="desktopWorkspace">{desktopTab === "workspace" ? <div className="workspaceLayout">{inputPanel}{resultsPanel}</div> : <div className="reportWorkspace">{reportPanel}</div>}</div><nav className="mobileToolTabs" aria-label="Mobile Tool Views">{(["input","results","report"] as MobileTab[]).map(t => <button type="button" key={t} className={mobileTab === t ? "active" : ""} onClick={() => setMobileTab(t)}>{t === "results" ? "Results" : t[0].toUpperCase()+t.slice(1)}</button>)}</nav><div className="mobileWorkspace">{mobileTab === "input" ? inputPanel : mobileTab === "results" ? resultsPanel : reportPanel}</div><footer>Figures clarify variable meaning and geometry only; calculations use explicit project inputs and unrounded engine values.</footer></main>;
 }
