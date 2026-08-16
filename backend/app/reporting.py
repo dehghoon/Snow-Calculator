@@ -16,17 +16,6 @@ DISCLAIMER = (
 )
 
 
-def _inline_reference_rows() -> list[dict[str, str]]:
-    return [
-        {"item": "Specified roof snow load, S", "formula": "Is (Ss Cb Cw Cs Ca + Sr)", "reference": "NBCC 2020, Sentence 4.1.6.2.(1)"},
-        {"item": "Basic roof factor, Cb", "formula": "NBCC Cb expression / threshold", "reference": "NBCC 2020, Sentence 4.1.6.2.(2)"},
-        {"item": "Wind exposure factor, Cw", "formula": "Cw selection", "reference": "NBCC 2020, Sentences 4.1.6.2.(3)-(4)"},
-        {"item": "Slope factor, Cs", "formula": "Cs from slope and surface", "reference": "NBCC 2020, Sentences 4.1.6.2.(5)-(7)"},
-        {"item": "Importance factor, Is", "formula": "ULS by category; SLS = 0.90", "reference": "NBCC 2020, Table 4.1.6.2.-A"},
-        {"item": "Accumulation factor, Ca", "formula": "Applicable uniform / drift case", "reference": "NBCC 2020, Sentence 4.1.6.2.(8) and applicable Articles 4.1.6.5-4.1.6.12"},
-    ]
-
-
 def build_report_preview(calculation: CalculationResponse) -> ReportPreviewResponse:
     data = calculation.report_data
     sections = [
@@ -40,19 +29,11 @@ def build_report_preview(calculation: CalculationResponse) -> ReportPreviewRespo
         {"id": "uls-load-distribution", "title": "ULS Load Distribution", "content": data["load_distribution"]},
         {"id": "sls-load-distribution", "title": "SLS Load Distribution", "content": data.get("sls_load_distribution", [])},
         {"id": "final-results", "title": "ULS / SLS Final Results", "content": data["final_results"]},
-        {"id": "formula-references", "title": "Formula Basis and NBCC 2020 References", "content": _inline_reference_rows()},
         {"id": "warnings", "title": "Warnings and Limitations", "content": {"warnings": data["warnings"], "limitations": data["limitations"]}},
         {"id": "responsibility", "title": "Engineering Responsibility", "content": DISCLAIMER},
         {"id": "validation", "title": "Validation Statement", "content": data["validation_statement"]},
     ]
-    return ReportPreviewResponse(
-        report_revision="5",
-        title="NBCC 2020 Roof Snow Calculation Report Preview",
-        sections=sections,
-        figures=calculation.figure_metadata,
-        official_pdf_available=True,
-        entitlement_required=False,
-    )
+    return ReportPreviewResponse(report_revision="6", title="NBCC 2020 Roof Snow Calculation Report Preview", sections=sections, figures=calculation.figure_metadata, official_pdf_available=True, entitlement_required=False)
 
 
 def _fmt(value: Any, digits: int = 3) -> str:
@@ -60,9 +41,7 @@ def _fmt(value: Any, digits: int = 3) -> str:
         return "Yes" if value else "No"
     if isinstance(value, (int, float)):
         return f"{value:.{digits}f}"
-    if value is None:
-        return "-"
-    return str(value)
+    return "-" if value is None else str(value)
 
 
 def _table(rows: list[list[Any]], widths: list[float] | None = None) -> Table:
@@ -85,16 +64,7 @@ def _table(rows: list[list[Any]], widths: list[float] | None = None) -> Table:
 
 def build_pdf_bytes(payload: CalculationRequest, calculation: CalculationResponse) -> bytes:
     stream = BytesIO()
-    doc = SimpleDocTemplate(
-        stream,
-        pagesize=A4,
-        rightMargin=13 * mm,
-        leftMargin=13 * mm,
-        topMargin=12 * mm,
-        bottomMargin=12 * mm,
-        title="NBCC 2020 Roof Snow Report",
-        author="LinkoTech Engineering",
-    )
+    doc = SimpleDocTemplate(stream, pagesize=A4, rightMargin=13 * mm, leftMargin=13 * mm, topMargin=12 * mm, bottomMargin=12 * mm, title="NBCC 2020 Roof Snow Report", author="LinkoTech Engineering")
     styles = getSampleStyleSheet()
     title = ParagraphStyle("ReportTitle", parent=styles["Title"], fontName="Helvetica-Bold", fontSize=15, leading=18, textColor=colors.HexColor("#173B5D"), alignment=TA_LEFT, spaceAfter=8)
     h2 = ParagraphStyle("ReportH2", parent=styles["Heading2"], fontName="Helvetica-Bold", fontSize=10.5, leading=13, textColor=colors.HexColor("#1F4E78"), spaceBefore=9, spaceAfter=5)
@@ -114,7 +84,7 @@ def build_pdf_bytes(payload: CalculationRequest, calculation: CalculationRespons
     ]
 
     c = payload.common
-    rows = [
+    inputs = [
         ["var", "ULS / value", "SLS / basis", "unit", "NBCC 2020 reference"],
         ["Ss", _fmt(c.ss), "same climatic value", "kPa", "Appendix C, Table C-2"],
         ["Sr", _fmt(c.sr_climatic), "same climatic value", "kPa", "Appendix C, Table C-2"],
@@ -123,7 +93,7 @@ def build_pdf_bytes(payload: CalculationRequest, calculation: CalculationRespons
         ["Cw", _fmt(c.cw), "same", "", "Sentences 4.1.6.2.(3)-(4)"],
         ["Cb", _fmt(c.cb), "same", "", "Sentence 4.1.6.2.(2)"],
     ]
-    story += [Paragraph("Input parameters and limit-state factors", h2), _table(rows, [22 * mm, 31 * mm, 46 * mm, 18 * mm, 53 * mm])]
+    story += [Paragraph("Input parameters and limit-state factors", h2), _table(inputs, [22 * mm, 31 * mm, 46 * mm, 18 * mm, 53 * mm])]
 
     final_rows = [["result", "value", "unit", "formula / basis", "NBCC 2020 reference"]]
     uls_peak = calculation.final_results.get("peak_snow_load_kpa", calculation.final_results.get("governing_snow_load_kpa"))
@@ -148,9 +118,6 @@ def build_pdf_bytes(payload: CalculationRequest, calculation: CalculationRespons
                 dist.append([_fmt(p.get("x_m"), 2), _fmt(p.get("ca")), _fmt(p.get("snow_load_kpa")), _fmt(sp.get("snow_load_kpa"))])
             story += [Paragraph("Load distribution — ULS then SLS", h2), _table(dist, [35 * mm, 35 * mm, 50 * mm, 50 * mm])]
 
-    formula_rows = [["calculation", "formula / basis", "NBCC 2020 reference"]] + [[r["item"], r["formula"], r["reference"]] for r in _inline_reference_rows()]
-    story += [Paragraph("Formula basis and NBCC 2020 references", h2), _table(formula_rows, [48 * mm, 62 * mm, 60 * mm])]
-
     if calculation.warnings:
         story.append(Paragraph("Warnings", h2))
         story += [Paragraph(f"- {w}", body) for w in calculation.warnings]
@@ -160,6 +127,5 @@ def build_pdf_bytes(payload: CalculationRequest, calculation: CalculationRespons
         Paragraph(DISCLAIMER, disclaimer_style),
         Paragraph("This tool is not a substitute for professional judgment. The engineer must review and verify all results against NBCC 2020, applicable amendments, and project-specific requirements.", body),
     ]
-
     doc.build(story)
     return stream.getvalue()
