@@ -4,7 +4,7 @@ import os
 import sys
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 
 ENGINE_SRC = Path(__file__).resolve().parents[2] / "packages" / "nbcc2020_roof_snow_engine" / "src"
@@ -15,7 +15,7 @@ from nbcc2020_roof_snow.validation.errors import InvalidInputError, InvalidRadic
 
 from .climatic_data import get_location_data, list_locations, list_provinces
 from .engine_adapter import calculate
-from .reporting import build_report_preview
+from .reporting import build_pdf_bytes, build_report_preview
 from .schemas import CalculationRequest, CalculationResponse, ErrorResponse, ReportPreviewResponse
 
 
@@ -94,11 +94,11 @@ def report_preview(payload: CalculationRequest) -> ReportPreviewResponse:
 
 
 @app.post("/api/v1/reports/official")
-def official_report() -> None:
-    raise HTTPException(
-        status_code=403,
-        detail={
-            "code": "ERR_REPORT_ENTITLEMENT_REQUIRED",
-            "detail": "Official PDF generation requires the approved LinkoTech authentication and active report entitlement integration.",
-        },
+def official_report(payload: CalculationRequest) -> Response:
+    calculation = calculate_roof_snow(payload)
+    pdf = build_pdf_bytes(payload, calculation)
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": 'attachment; filename="NBCC-2020-Roof-Snow-Report.pdf"'},
     )
