@@ -9,10 +9,13 @@ from reportlab.lib.units import mm
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 from .schemas import CalculationRequest, CalculationResponse, ReportPreviewResponse
 
+def _public_references(refs: list[dict[str, str]]) -> list[dict[str, str]]:
+    return [{"NBCC 2020 Reference": r.get("reference", "")} for r in refs if r.get("reference")]
+
 def build_report_preview(calculation: CalculationResponse) -> ReportPreviewResponse:
     data=calculation.report_data
-    sections=[{"id":"document-control","title":"Document Control","content":data["document_control"]},{"id":"calculation-basis","title":"Calculation Basis","content":data["calculation_basis"]},{"id":"geometry","title":"Geometry","content":data["geometry"]},{"id":"climatic-inputs","title":"Climatic Inputs","content":data["climatic_inputs"]},{"id":"common-parameters","title":"Common Snow Parameters","content":data["common_snow_parameters"]},{"id":"source-area-cases","title":"Source-Area Cases","content":data["source_area_cases"]},{"id":"governing-case","title":"Governing Case","content":data["governing_case"]},{"id":"uls-load-distribution","title":"ULS Load Distribution","content":data["load_distribution"]},{"id":"sls-load-distribution","title":"SLS Load Distribution","content":data.get("sls_load_distribution",[])},{"id":"final-results","title":"ULS / SLS Final Results","content":data["final_results"]},{"id":"warnings","title":"Warnings and Limitations","content":{"warnings":data["warnings"],"limitations":data["limitations"]}},{"id":"references","title":"Code References","content":data["code_references"]},{"id":"validation","title":"Validation Statement","content":data["validation_statement"]}]
-    return ReportPreviewResponse(report_revision="3",title="NBCC 2020 Roof Snow Calculation Report Preview",sections=sections,figures=calculation.figure_metadata,official_pdf_available=True,entitlement_required=False)
+    sections=[{"id":"document-control","title":"Document Control","content":data["document_control"]},{"id":"calculation-basis","title":"Calculation Basis","content":data["calculation_basis"]},{"id":"geometry","title":"Geometry","content":data["geometry"]},{"id":"climatic-inputs","title":"Climatic Inputs","content":data["climatic_inputs"]},{"id":"common-parameters","title":"Common Snow Parameters","content":data["common_snow_parameters"]},{"id":"source-area-cases","title":"Source-Area Cases","content":data["source_area_cases"]},{"id":"governing-case","title":"Governing Case","content":data["governing_case"]},{"id":"uls-load-distribution","title":"ULS Load Distribution","content":data["load_distribution"]},{"id":"sls-load-distribution","title":"SLS Load Distribution","content":data.get("sls_load_distribution",[])},{"id":"final-results","title":"ULS / SLS Final Results","content":data["final_results"]},{"id":"warnings","title":"Warnings and Limitations","content":{"warnings":data["warnings"],"limitations":data["limitations"]}},{"id":"references","title":"NBCC 2020 References","content":_public_references(data["code_references"])},{"id":"validation","title":"Validation Statement","content":data["validation_statement"]}]
+    return ReportPreviewResponse(report_revision="4",title="NBCC 2020 Roof Snow Calculation Report Preview",sections=sections,figures=calculation.figure_metadata,official_pdf_available=True,entitlement_required=False)
 
 def _fmt(value:Any,digits:int=3)->str:
     if isinstance(value,bool): return "Yes" if value else "No"
@@ -42,7 +45,8 @@ def build_pdf_bytes(payload:CalculationRequest,calculation:CalculationResponse)-
         story += [Paragraph("Load distribution — ULS and SLS",h2),_table(dist,[38*mm,38*mm,47*mm,47*mm])]
     if calculation.warnings:
         story.append(Paragraph("Warnings",h2));story += [Paragraph(f"- {w}",body) for w in calculation.warnings]
-    if calculation.references:
-        rr=[["formula ID","NBCC reference"]]+[[r.get("formula_id",""),r.get("reference","")] for r in calculation.references];story += [Paragraph("NBCC references",h2),_table(rr,[48*mm,122*mm])]
+    refs=[r.get("reference","") for r in calculation.references if r.get("reference")]
+    if refs:
+        rr=[["NBCC 2020 Reference"]]+[[r] for r in refs];story += [Paragraph("NBCC 2020 References",h2),_table(rr,[170*mm])]
     story += [Spacer(1,5*mm),Paragraph("ULS uses the selected NBCC Importance Category factor. SLS uses Is = 0.90 in accordance with the importance-factor table used by this application. Both limit states use the same calculated geometry and snow-distribution factors.",body)]
     doc.build(story);return stream.getvalue()
