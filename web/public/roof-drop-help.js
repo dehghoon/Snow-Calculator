@@ -18,21 +18,39 @@
     return visual;
   }
 
-  function showImage(pop, src, alt) {
+  function showImage(pop, src, alt, fallbackSrc) {
     const visual = prepareVisual(pop);
-    if (visual) visual.innerHTML = `<img src="${src}" alt="${alt}" style="display:block;width:100%;height:auto;max-height:none;object-fit:contain;background:#fff;border-radius:8px"/>`;
+    if (!visual) return;
+    const img = document.createElement('img');
+    img.src = src;
+    img.alt = alt;
+    img.style.cssText = 'display:block;width:100%;height:auto;max-height:none;object-fit:contain;background:#fff;border-radius:8px';
+    if (fallbackSrc) {
+      img.onerror = () => {
+        if (img.dataset.fallbackApplied === '1') return;
+        img.dataset.fallbackApplied = '1';
+        img.src = fallbackSrc;
+      };
+    }
+    visual.innerHTML = '';
+    visual.appendChild(img);
   }
 
   function enhance() {
     document.querySelectorAll('.help-popover').forEach(pop => {
       const label = pop.getAttribute('aria-label') || '';
-      if (pop.dataset.roofDropEnhanced === '4') return;
+      if (pop.dataset.roofDropEnhanced === '5') return;
       if (label === 'Lower-roof source case') {
-        showImage(pop, '/nbcc-roof-drop-cases.jpg?v=4', 'NBCC Figure 4.1.6.5.-B - Snow load Cases I, II and III');
-        pop.dataset.roofDropEnhanced = '4';
+        showImage(
+          pop,
+          '/nbcc-roof-drop-cases.jpg?v=5',
+          'NBCC Figure 4.1.6.5.-B - Snow load Cases I, II and III',
+          'https://raw.githubusercontent.com/dehghoon/Snow-Calculator/main/web/public/nbcc-roof-drop-cases.jpg'
+        );
+        pop.dataset.roofDropEnhanced = '5';
       } else if (label === 'Source length, ls' || label === 'Source width, ws') {
         showImage(pop, '/nbcc-ws-ls-table.webp?v=2', 'NBCC Table 4.1.6.5.-B - source dimensions ws and ls by case');
-        pop.dataset.roofDropEnhanced = '4';
+        pop.dataset.roofDropEnhanced = '5';
       }
     });
   }
