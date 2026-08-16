@@ -3,65 +3,20 @@
   const xml = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[c]));
   const u16 = n => new Uint8Array([n & 255, (n >>> 8) & 255]);
   const u32 = n => new Uint8Array([n & 255, (n >>> 8) & 255, (n >>> 16) & 255, (n >>> 24) & 255]);
-  const cat = parts => { const len = parts.reduce((s,p)=>s+p.length,0); const out=new Uint8Array(len); let o=0; for(const p of parts){out.set(p,o);o+=p.length;} return out; };
-  const crcTable = (() => { const t=new Uint32Array(256); for(let n=0;n<256;n++){let c=n; for(let k=0;k<8;k++) c=(c&1)?(0xEDB88320^(c>>>1)):(c>>>1); t[n]=c>>>0;} return t; })();
-  const crc32 = bytes => { let c=0xFFFFFFFF; for(const b of bytes) c=crcTable[(c^b)&255]^(c>>>8); return (c^0xFFFFFFFF)>>>0; };
-
-  function zipStore(files){
-    const locals=[], centrals=[]; let offset=0;
-    for(const [name,dataText] of files){
-      const nameB=te.encode(name), data=te.encode(dataText), crc=crc32(data), flags=0x0800;
-      const local=cat([u32(0x04034b50),u16(20),u16(flags),u16(0),u16(0),u16(0),u32(crc),u32(data.length),u32(data.length),u16(nameB.length),u16(0),nameB,data]);
-      locals.push(local);
-      const central=cat([u32(0x02014b50),u16(20),u16(20),u16(flags),u16(0),u16(0),u16(0),u32(crc),u32(data.length),u32(data.length),u16(nameB.length),u16(0),u16(0),u16(0),u16(0),u32(0),u32(offset),nameB]);
-      centrals.push(central); offset += local.length;
-    }
-    const centralBlock=cat(centrals), localBlock=cat(locals);
-    const end=cat([u32(0x06054b50),u16(0),u16(0),u16(files.length),u16(files.length),u32(centralBlock.length),u32(localBlock.length),u16(0)]);
-    return new Blob([localBlock,centralBlock,end],{type:'application/vnd.openxmlformats-officedocument.wordprocessingml.document'});
-  }
-
-  const p = (text,bold=false,style='') => `<w:p>${style?`<w:pPr><w:pStyle w:val="${style}"/></w:pPr>`:''}<w:r>${bold?'<w:rPr><w:b/></w:rPr>':''}<w:t xml:space="preserve">${xml(text)}</w:t></w:r></w:p>`;
-  const cell = text => `<w:tc><w:tcPr><w:tcW w:w="2400" w:type="dxa"/></w:tcPr>${p(text)}</w:tc>`;
-  const tableFrom = table => {
-    const rows=[...table.querySelectorAll('tr')].map(tr=>[...tr.querySelectorAll('th,td')].map(td=>td.textContent.trim()));
-    return `<w:tbl><w:tblPr><w:tblBorders><w:top w:val="single" w:sz="4" w:color="808080"/><w:left w:val="single" w:sz="4" w:color="808080"/><w:bottom w:val="single" w:sz="4" w:color="808080"/><w:right w:val="single" w:sz="4" w:color="808080"/><w:insideH w:val="single" w:sz="4" w:color="B0B0B0"/><w:insideV w:val="single" w:sz="4" w:color="B0B0B0"/></w:tblBorders></w:tblPr>${rows.map(r=>`<w:tr>${r.map(cell).join('')}</w:tr>`).join('')}</w:tbl>`;
-  };
-
-  function buildDocumentXml(report){
-    let body='';
-    const title=report.querySelector('h1')?.textContent.trim() || 'NBCC 2020 Roof Snow Calculation';
-    body += p('LINKOTECH ENGINEERING',true,'Title') + p(title,true,'Heading1');
-    const header=[...report.querySelectorAll('.excelTitle span,.excelTitle b')].map(x=>x.textContent.trim()).filter(Boolean).join(' | ');
-    if(header) body += p(header);
-    for(const section of report.querySelectorAll('section')){
-      const h=section.querySelector('h2'); if(h) body += p(h.textContent.trim(),true,'Heading2');
-      const tables=section.querySelectorAll('table');
-      if(tables.length){ for(const t of tables) body += tableFrom(t); }
-      else { const txt=[...section.childNodes].filter(n=>n.nodeType===3 || (n.nodeType===1 && n.tagName!=='H2')).map(n=>n.textContent?.trim()).filter(Boolean).join(' '); if(txt) body += p(txt); }
-    }
-    const footer=report.querySelector('.excelFooter')?.textContent.trim(); if(footer) body += p(footer);
-    return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>${body}<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="900" w:right="900" w:bottom="900" w:left="900"/></w:sectPr></w:body></w:document>`;
-  }
-
-  function exportDocx(){
-    const report=document.querySelector('#excelCalcReport'); if(!report) return;
-    const contentTypes=`<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/></Types>`;
-    const rels=`<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>`;
-    const styles=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="20"/></w:rPr></w:style><w:style w:type="paragraph" w:styleId="Title"><w:name w:val="Title"/><w:rPr><w:b/><w:sz w:val="28"/><w:color w:val="1F4E78"/></w:rPr></w:style><w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/><w:rPr><w:b/><w:sz w:val="26"/></w:rPr></w:style><w:style w:type="paragraph" w:styleId="Heading2"><w:name w:val="heading 2"/><w:rPr><w:b/><w:sz w:val="22"/><w:color w:val="1F4E78"/></w:rPr></w:style></w:styles>`;
-    const blob=zipStore([['[Content_Types].xml',contentTypes],['_rels/.rels',rels],['word/document.xml',buildDocumentXml(report)],['word/styles.xml',styles]]);
-    const url=URL.createObjectURL(blob), a=document.createElement('a'); a.href=url; a.download='NBCC-2020-Roof-Snow-Report.docx'; document.body.appendChild(a); a.click(); setTimeout(()=>{URL.revokeObjectURL(url);a.remove();},1500);
-  }
-
-  function exportPdf(){
-    window.print();
-  }
-
-  document.addEventListener('click', e => {
-    const pdf=e.target.closest('.pdfExport');
-    const word=e.target.closest('.wordExport');
-    if(!pdf && !word) return;
-    e.preventDefault(); e.stopImmediatePropagation();
-    if(pdf) exportPdf(); else exportDocx();
-  }, true);
+  const cat = parts => { const len=parts.reduce((s,p)=>s+p.length,0), out=new Uint8Array(len); let o=0; for(const p of parts){out.set(p,o);o+=p.length;} return out; };
+  const crcTable=(()=>{const t=new Uint32Array(256);for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=(c&1)?(0xEDB88320^(c>>>1)):(c>>>1);t[n]=c>>>0;}return t;})();
+  const crc32=bytes=>{let c=0xFFFFFFFF;for(const b of bytes)c=crcTable[(c^b)&255]^(c>>>8);return(c^0xFFFFFFFF)>>>0;};
+  function downloadBlob(blob,filename){const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=filename;a.style.display='none';document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(url);a.remove();},2000);}
+  function zipStore(files){const locals=[],centrals=[];let offset=0;for(const[name,dataText]of files){const nameB=te.encode(name),data=te.encode(dataText),crc=crc32(data),flags=0x0800;const local=cat([u32(0x04034b50),u16(20),u16(flags),u16(0),u16(0),u16(0),u32(crc),u32(data.length),u32(data.length),u16(nameB.length),u16(0),nameB,data]);locals.push(local);const central=cat([u32(0x02014b50),u16(20),u16(20),u16(flags),u16(0),u16(0),u16(0),u32(crc),u32(data.length),u32(data.length),u16(nameB.length),u16(0),u16(0),u16(0),u16(0),u32(0),u32(offset),nameB]);centrals.push(central);offset+=local.length;}const centralBlock=cat(centrals),localBlock=cat(locals);const end=cat([u32(0x06054b50),u16(0),u16(0),u16(files.length),u16(files.length),u32(centralBlock.length),u32(localBlock.length),u16(0)]);return new Blob([localBlock,centralBlock,end],{type:'application/vnd.openxmlformats-officedocument.wordprocessingml.document'});}
+  const p=(text,bold=false,style='')=>`<w:p>${style?`<w:pPr><w:pStyle w:val="${style}"/></w:pPr>`:''}<w:r>${bold?'<w:rPr><w:b/></w:rPr>':''}<w:t xml:space="preserve">${xml(text)}</w:t></w:r></w:p>`;
+  const cell=text=>`<w:tc><w:tcPr><w:tcW w:w="2400" w:type="dxa"/></w:tcPr>${p(text)}</w:tc>`;
+  const tableFrom=table=>{const rows=[...table.querySelectorAll('tr')].map(tr=>[...tr.querySelectorAll('th,td')].map(td=>td.textContent.trim()));return`<w:tbl><w:tblPr><w:tblBorders><w:top w:val="single" w:sz="4" w:color="808080"/><w:left w:val="single" w:sz="4" w:color="808080"/><w:bottom w:val="single" w:sz="4" w:color="808080"/><w:right w:val="single" w:sz="4" w:color="808080"/><w:insideH w:val="single" w:sz="4" w:color="B0B0B0"/><w:insideV w:val="single" w:sz="4" w:color="B0B0B0"/></w:tblBorders></w:tblPr>${rows.map(r=>`<w:tr>${r.map(cell).join('')}</w:tr>`).join('')}</w:tbl>`;};
+  function buildDocumentXml(report){let body='';const title=report.querySelector('h1')?.textContent.trim()||'NBCC 2020 Roof Snow Calculation';body+=p('LINKOTECH ENGINEERING',true,'Title')+p(title,true,'Heading1');const header=[...report.querySelectorAll('.excelTitle span,.excelTitle b')].map(x=>x.textContent.trim()).filter(Boolean).join(' | ');if(header)body+=p(header);for(const section of report.querySelectorAll('section')){const h=section.querySelector('h2');if(h)body+=p(h.textContent.trim(),true,'Heading2');const tables=section.querySelectorAll('table');if(tables.length){for(const t of tables)body+=tableFrom(t);}else{const txt=[...section.childNodes].filter(n=>n.nodeType===3||(n.nodeType===1&&n.tagName!=='H2')).map(n=>n.textContent?.trim()).filter(Boolean).join(' ');if(txt)body+=p(txt);}}const footer=report.querySelector('.excelFooter')?.textContent.trim();if(footer)body+=p(footer);return`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>${body}<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="900" w:right="900" w:bottom="900" w:left="900"/></w:sectPr></w:body></w:document>`;}
+  function exportDocx(){const report=document.querySelector('#excelCalcReport');if(!report)return;const contentTypes=`<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/></Types>`;const rels=`<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>`;const styles=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial"/><w:sz w:val="20"/></w:rPr></w:style><w:style w:type="paragraph" w:styleId="Title"><w:name w:val="Title"/><w:rPr><w:b/><w:sz w:val="28"/><w:color w:val="1F4E78"/></w:rPr></w:style><w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/><w:rPr><w:b/><w:sz w:val="26"/></w:rPr></w:style><w:style w:type="paragraph" w:styleId="Heading2"><w:name w:val="heading 2"/><w:rPr><w:b/><w:sz w:val="22"/><w:color w:val="1F4E78"/></w:rPr></w:style></w:styles>`;downloadBlob(zipStore([['[Content_Types].xml',contentTypes],['_rels/.rels',rels],['word/document.xml',buildDocumentXml(report)],['word/styles.xml',styles]]),'NBCC-2020-Roof-Snow-Report.docx');}
+  const pdfText=s=>String(s??'').replace(/γ/g,'gamma').replace(/α/g,'alpha').replace(/²/g,'^2').replace(/₀/g,'0').replace(/[–—−]/g,'-').replace(/[×]/g,'x').replace(/[^\x20-\x7E]/g,' ').replace(/\\/g,'\\\\').replace(/\(/g,'\\(').replace(/\)/g,'\\)');
+  function reportLines(report){const lines=[];const title=report.querySelector('h1')?.textContent.trim()||'NBCC 2020 Roof Snow Calculation';lines.push({t:'LINKOTECH ENGINEERING',b:true,s:15},{t:title,b:true,s:13});const header=[...report.querySelectorAll('.excelTitle span,.excelTitle b')].map(x=>x.textContent.trim()).filter(Boolean).join(' | ');if(header)lines.push({t:header,s:9});lines.push({t:'',s:8});for(const section of report.querySelectorAll('section')){const h=section.querySelector('h2');if(h)lines.push({t:h.textContent.trim(),b:true,s:11});for(const table of section.querySelectorAll('table')){for(const tr of table.querySelectorAll('tr')){const cells=[...tr.querySelectorAll('th,td')].map(td=>td.textContent.trim());lines.push({t:cells.join('   |   '),s:8,b:tr.querySelector('th')!==null});}lines.push({t:'',s:6});}if(!section.querySelector('table')){const txt=[...section.childNodes].filter(n=>n.nodeType===3||(n.nodeType===1&&n.tagName!=='H2')).map(n=>n.textContent?.trim()).filter(Boolean).join(' ');if(txt)lines.push({t:txt,s:8});}}const footer=report.querySelector('.excelFooter')?.textContent.trim();if(footer)lines.push({t:'',s:6},{t:footer,s:7});return lines;}
+  function wrapLine(line,max=96){const words=String(line.t||'').split(/\s+/),out=[];let cur='';for(const w of words){const next=cur?cur+' '+w:w;if(next.length>max&&cur){out.push({...line,t:cur});cur=w;}else cur=next;}out.push({...line,t:cur});return out;}
+  function buildPdfBlob(report){const raw=reportLines(report).flatMap(x=>wrapLine(x));const pages=[];let page=[],used=0;for(const line of raw){const h=(line.s||8)+4;if(used+h>710&&page.length){pages.push(page);page=[];used=0;}page.push(line);used+=h;}if(page.length)pages.push(page);if(!pages.length)pages.push([{t:'NBCC 2020 Roof Snow Report',b:true,s:14}]);const objects=[],add=s=>{objects.push(s);return objects.length;};const catalogId=add(''),pagesId=add(''),fontId=add('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>'),boldId=add('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>'),pageIds=[];for(const pg of pages){let y=792,stream='0.12 0.22 0.34 rg\n';for(const line of pg){const size=line.s||8;y-=size+4;stream+=`BT /${line.b?'F2':'F1'} ${size} Tf 42 ${Math.max(y,42)} Td (${pdfText(line.t)}) Tj ET\n`;}const contentId=add(`<< /Length ${te.encode(stream).length} >>\nstream\n${stream}endstream`);pageIds.push(add(`<< /Type /Page /Parent ${pagesId} 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 ${fontId} 0 R /F2 ${boldId} 0 R >> >> /Contents ${contentId} 0 R >>`));}objects[catalogId-1]=`<< /Type /Catalog /Pages ${pagesId} 0 R >>`;objects[pagesId-1]=`<< /Type /Pages /Kids [${pageIds.map(id=>`${id} 0 R`).join(' ')}] /Count ${pageIds.length} >>`;let pdf='%PDF-1.4\n%PDFGEN\n',offsets=[0];for(let i=0;i<objects.length;i++){offsets[i+1]=te.encode(pdf).length;pdf+=`${i+1} 0 obj\n${objects[i]}\nendobj\n`;}const xref=te.encode(pdf).length;pdf+=`xref\n0 ${objects.length+1}\n0000000000 65535 f \n`;for(let i=1;i<=objects.length;i++)pdf+=`${String(offsets[i]).padStart(10,'0')} 00000 n \n`;pdf+=`trailer\n<< /Size ${objects.length+1} /Root ${catalogId} 0 R >>\nstartxref\n${xref}\n%%EOF`;return new Blob([te.encode(pdf)],{type:'application/pdf'});}
+  function exportPdf(){const report=document.querySelector('#excelCalcReport');if(!report)return;downloadBlob(buildPdfBlob(report),'NBCC-2020-Roof-Snow-Report.pdf');}
+  document.addEventListener('click',e=>{const pdf=e.target.closest('.pdfExport'),word=e.target.closest('.wordExport');if(!pdf&&!word)return;e.preventDefault();e.stopImmediatePropagation();if(pdf)exportPdf();else exportDocx();},true);
 })();
