@@ -40,6 +40,13 @@ export interface CalculationRequest {
   distribution_points?: number;
 }
 
+export interface SnowDistributionPoint {
+  x_m: number;
+  ca: number;
+  sr_applicable_kpa: number;
+  snow_load_kpa: number;
+}
+
 export interface CalculationResponse {
   calculation_status: string;
   calculation_basis: string;
@@ -52,17 +59,14 @@ export interface CalculationResponse {
   case_results: Array<Record<string, unknown>>;
   governing_case: Record<string, unknown> | null;
   projection_result: Record<string, unknown> | null;
-  distribution_segments: Array<{
-    x_m: number;
-    ca: number;
-    sr_applicable_kpa: number;
-    snow_load_kpa: number;
-  }>;
+  distribution_segments: SnowDistributionPoint[];
   final_results: Record<string, unknown>;
   warnings: string[];
   errors: string[];
   references: Array<Record<string, string>>;
   validation_trace: Array<Record<string, string>>;
   figure_metadata: Array<Record<string, unknown>>;
-  report_data: Record<string, unknown>;
+  report_data: Record<string, unknown> & {
+    sls_load_distribution?: SnowDistributionPoint[];
+  };
 }
