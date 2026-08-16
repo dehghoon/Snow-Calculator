@@ -1,20 +1,32 @@
 from __future__ import annotations
 
-# NBCC 2020 Appendix C / Table C-2 climatic design data used by the UI lookup.
-# Keep this dataset server-side so the frontend never hard-codes climatic values.
-# Values below seed the lookup structure and can be extended with the complete
-# licensed/verified Table C-2 dataset without changing the API or frontend.
+import json
+from pathlib import Path
 
-CLIMATIC_DATA: dict[str, dict[str, dict[str, float]]] = {
-    "Ontario": {
-        "Toronto": {"ss": 1.1, "sr": 0.4},
-        "Ottawa": {"ss": 2.4, "sr": 0.4},
-    },
-    "Quebec": {
-        "Montreal": {"ss": 2.1, "sr": 0.4},
-        "Quebec City": {"ss": 3.6, "sr": 0.4},
-    },
-}
+# NBCC 2020 Appendix C, Table C-2 climatic snow design data used by the UI lookup.
+# The application currently consumes Ss and Sr. The dataset below covers every
+# selected Canadian location listed in the supplied Table C-2 pages.
+_DATA_FILES = (
+    "climatic_bc.json",
+    "climatic_prairies.json",
+    "climatic_ontario.json",
+    "climatic_quebec.json",
+    "climatic_atlantic.json",
+    "climatic_north.json",
+)
+
+
+def _load_climatic_data() -> dict[str, dict[str, dict[str, float]]]:
+    root = Path(__file__).resolve().parent
+    merged: dict[str, dict[str, dict[str, float]]] = {}
+    for filename in _DATA_FILES:
+        payload = json.loads((root / filename).read_text(encoding="utf-8"))
+        for province, locations in payload.items():
+            merged.setdefault(province, {}).update(locations)
+    return merged
+
+
+CLIMATIC_DATA = _load_climatic_data()
 
 
 def list_provinces() -> list[str]:
