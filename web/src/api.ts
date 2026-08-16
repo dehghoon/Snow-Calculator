@@ -1,9 +1,25 @@
 import type { CalculationRequest, CalculationResponse } from "./types";
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
+const REQUEST_TIMEOUT_MS = 30000;
+
+async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit = {}) {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new Error("The calculation service did not respond within 30 seconds. Please try again.");
+    }
+    throw error;
+  } finally {
+    window.clearTimeout(timeout);
+  }
+}
 
 async function getJson<T>(path: string): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${path}`);
+  const response = await fetchWithTimeout(`${API_BASE_URL}${path}`);
   if (!response.ok) {
     const body = await response.json().catch(() => null);
     const detail = body?.detail?.detail ?? body?.detail ?? "Request failed.";
@@ -35,7 +51,7 @@ export function getClimaticLocation(province: string, location: string): Promise
 }
 
 export async function calculateRoofSnow(payload: CalculationRequest): Promise<CalculationResponse> {
-  const response = await fetch(`${API_BASE_URL}/api/v1/calculations/roof-snow`, {
+  const response = await fetchWithTimeout(`${API_BASE_URL}/api/v1/calculations/roof-snow`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload)
