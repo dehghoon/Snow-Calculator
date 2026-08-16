@@ -114,10 +114,12 @@ def test_adjacent_drift_rejects_cw_not_one():
     assert response.status_code == 422
 
 
-def test_official_report_requires_entitlement():
-    response = client.post("/api/v1/reports/official")
-    assert response.status_code == 403
-    assert response.json()["detail"]["code"] == "ERR_REPORT_ENTITLEMENT_REQUIRED"
+def test_official_report_downloads_pdf():
+    response = client.post("/api/v1/reports/official", json=BASE)
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("application/pdf")
+    assert "attachment" in response.headers["content-disposition"].lower()
+    assert response.content.startswith(b"%PDF")
 
 
 def test_openapi_generated():
