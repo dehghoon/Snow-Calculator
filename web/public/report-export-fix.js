@@ -1,4 +1,5 @@
 (() => {
+  const STORE = 'snow-calculator-report-state-v2';
   const te = new TextEncoder();
   const xml = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[c]));
   const u16 = n => new Uint8Array([n & 255, (n >>> 8) & 255]);
@@ -6,6 +7,7 @@
   const cat = parts => { const len = parts.reduce((s,p)=>s+p.length,0); const out=new Uint8Array(len); let o=0; for(const p of parts){out.set(p,o);o+=p.length;} return out; };
   const crcTable = (() => { const t=new Uint32Array(256); for(let n=0;n<256;n++){let c=n; for(let k=0;k<8;k++) c=(c&1)?(0xEDB88320^(c>>>1)):(c>>>1); t[n]=c>>>0;} return t; })();
   const crc32 = bytes => { let c=0xFFFFFFFF; for(const b of bytes) c=crcTable[(c^b)&255]^(c>>>8); return (c^0xFFFFFFFF)>>>0; };
+  const n = v => { const x=Number(String(v ?? '').replace(/[^0-9+\-.eE]/g,'')); return Number.isFinite(x) ? x : 0; };
 
   function zipStore(files){
     const locals=[], centrals=[]; let offset=0;
@@ -38,7 +40,7 @@
       const h=section.querySelector('h2'); if(h) body += p(h.textContent.trim(),true,'Heading2');
       const tables=section.querySelectorAll('table');
       if(tables.length){ for(const t of tables) body += tableFrom(t); }
-      else { const txt=[...section.childNodes].filter(n=>n.nodeType===3 || (n.nodeType===1 && n.tagName!=='H2')).map(n=>n.textContent?.trim()).filter(Boolean).join(' '); if(txt) body += p(txt); }
+      else { const txt=[...section.childNodes].filter(node=>node.nodeType===3 || (node.nodeType===1 && node.tagName!=='H2')).map(node=>node.textContent?.trim()).filter(Boolean).join(' '); if(txt) body += p(txt); }
     }
     const footer=report.querySelector('.excelFooter')?.textContent.trim(); if(footer) body += p(footer);
     return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>${body}<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="900" w:right="900" w:bottom="900" w:left="900"/></w:sectPr></w:body></w:document>`;
@@ -53,8 +55,77 @@
     const url=URL.createObjectURL(blob), a=document.createElement('a'); a.href=url; a.download='NBCC-2020-Roof-Snow-Report.docx'; document.body.appendChild(a); a.click(); setTimeout(()=>{URL.revokeObjectURL(url);a.remove();},1500);
   }
 
-  function exportPdf(){
-    window.print();
+  function storedInputs(){
+    try { return JSON.parse(sessionStorage.getItem(STORE) || '{}').inputs || {}; } catch { return {}; }
+  }
+
+  function buildCalculationPayload(){
+    const i=storedInputs();
+    const modeText=String(i.mode || 'Uniform roof');
+    const mode=modeText.includes('Lower') ? 'LOWER_ADJACENT_ROOF' : modeText.includes('Projection') ? 'ROOF_PROJECTION_OR_PARAPET' : 'UNIFORM_ROOF';
+    const surface=String(i.surface || '').toLowerCase().includes('slippery') ? 'smooth_slippery' : 'normal';
+    const payload={
+      mode,
+      common:{
+        ss:n(i.ss),
+        sr_climatic:n(i.sr),
+        roof_slope_alpha:n(i.alpha),
+        roof_surface_type:surface,
+        is:n(i.is),
+        cw:n(i.cw),
+        cb:n(i.cb),
+        adjacent_surface_drift_applicable:mode==='LOWER_ADJACENT_ROOF'
+      },
+      distribution_points:10
+    };
+    if(mode==='LOWER_ADJACENT_ROOF'){
+      payload.lower_roof_cases=[{
+        case_id:String(i.caseId || 'I'),
+        source_surface:'Upper roof',
+        receiving_surface:'Lower roof',
+        drift_direction:'Toward roof step',
+        ls:n(i.ls),
+        ws:n(i.ws),
+        step_height:n(i.h),
+        parapet_height:n(i.hp),
+        applicability_status:'APPLICABLE',
+        interpretation_note:'Report export from current UI calculation inputs'
+      }];
+    }
+    if(mode==='ROOF_PROJECTION_OR_PARAPET'){
+      payload.projection={projection_height:n(i.h),projection_longest_dimension:n(i.l0)};
+    }
+    return payload;
+  }
+
+  function downloadBlob(blob, filename){
+    const url=URL.createObjectURL(blob), a=document.createElement('a');
+    a.href=url; a.download=filename; a.style.display='none'; document.body.appendChild(a); a.click();
+    setTimeout(()=>{URL.revokeObjectURL(url);a.remove();},2500);
+  }
+
+  async function exportPdf(button){
+    const old=button?.textContent;
+    if(button){ button.disabled=true; button.textContent='Creating PDF…'; }
+    try{
+      const base=String(window.__SNOW_API_BASE__ || '').replace(/\/$/,'');
+      const response=await fetch(`${base}/api/v1/reports/official`,{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify(buildCalculationPayload())
+      });
+      if(!response.ok){
+        let detail='PDF generation failed.';
+        try{ const body=await response.json(); detail=body?.detail?.detail || body?.detail || detail; }catch{}
+        throw new Error(typeof detail==='string' ? detail : JSON.stringify(detail));
+      }
+      downloadBlob(await response.blob(),'NBCC-2020-Roof-Snow-Report.pdf');
+    }catch(err){
+      console.error(err);
+      alert(err instanceof Error ? err.message : 'PDF generation failed.');
+    }finally{
+      if(button){ button.disabled=false; button.textContent=old || 'Generate PDF'; }
+    }
   }
 
   document.addEventListener('click', e => {
@@ -62,6 +133,6 @@
     const word=e.target.closest('.wordExport');
     if(!pdf && !word) return;
     e.preventDefault(); e.stopImmediatePropagation();
-    if(pdf) exportPdf(); else exportDocx();
+    if(pdf) exportPdf(pdf); else exportDocx();
   }, true);
 })();
