@@ -1,5 +1,6 @@
 (() => {
   const STORE = 'snow-calculator-sls-response-v1';
+  const DISCLAIMER = 'Disclaimer: Results from this tool must be independently verified by a qualified professional engineer. The engineer is responsible for verifying all inputs, assumptions, calculations, code references, and project-specific requirements before design or construction use.';
   const fmt = (v, d = 3) => Number.isFinite(Number(v)) ? Number(v).toFixed(d) : '—';
 
   const originalFetch = window.fetch.bind(window);
@@ -24,108 +25,106 @@
     if (node && node.textContent !== value) node.textContent = value;
   }
 
-  function addOrUpdateCard(cards, key, label, value) {
+  function isUniform(data) {
+    const mode = data?.interpreted_geometry?.mode || data?.inputs?.mode || '';
+    return String(mode).includes('UNIFORM');
+  }
+
+  function ensureCardAfter(anchor, key, label, value) {
+    const cards = anchor?.parentElement;
+    if (!cards) return;
     let card = cards.querySelector(`[data-sls-card="${key}"]`);
     if (!card) {
       card = document.createElement('article');
       card.dataset.slsCard = key;
       card.innerHTML = '<span></span><b></b>';
-      cards.insertBefore(card, cards.firstChild);
+      anchor.insertAdjacentElement('afterend', card);
     }
     setText(card.querySelector('span'), label);
     setText(card.querySelector('b'), value);
   }
 
-  function enhanceResults(data) {
-    const panels = [...document.querySelectorAll('.panel.results')];
-    if (!panels.length || !data) return false;
+  function ensureDisclaimer(panel) {
+    let box = panel.querySelector('.engineering-disclaimer');
+    if (!box) {
+      box = document.createElement('div');
+      box.className = 'engineering-disclaimer';
+      box.innerHTML = `<b>Engineering responsibility</b><span>${DISCLAIMER}</span>`;
+      panel.appendChild(box);
+    }
+  }
 
+  function enhanceResultsPanel(panel, data) {
+    if (!panel || !data) return;
     const final = data.final_results || {};
-    const slsPeak = final.sls_peak_snow_load_kpa;
+    const cards = panel.querySelector('.cards');
     const ulsPeak = final.peak_snow_load_kpa ?? final.governing_snow_load_kpa;
-    const sls = data.report_data?.sls_load_distribution || [];
+    const slsPeak = final.sls_peak_snow_load_kpa;
+
+    if (cards) {
+      const existingPeak = [...cards.querySelectorAll('article')].find(a => /Peak \/ governing snow load|ULS peak \/ governing snow load/i.test(a.querySelector('span')?.textContent || ''));
+      if (existingPeak) {
+        setText(existingPeak.querySelector('span'), 'ULS peak / governing snow load');
+        if (ulsPeak != null) setText(existingPeak.querySelector('b'), `${fmt(ulsPeak)} kPa`);
+        if (slsPeak != null) ensureCardAfter(existingPeak, 'sls', 'SLS peak / governing snow load', `${fmt(slsPeak)} kPa`);
+      }
+    }
+
+    const table = panel.querySelector('.table');
     const uls = data.distribution_segments || [];
-
-    panels.forEach(panel => {
-      const cards = panel.querySelector('.cards');
-      if (cards) {
-        if (ulsPeak != null) addOrUpdateCard(cards, 'uls', 'ULS peak / governing snow load', `${fmt(ulsPeak)} kPa`);
-        if (slsPeak != null) addOrUpdateCard(cards, 'sls', 'SLS peak / governing snow load', `${fmt(slsPeak)} kPa`);
-        if (final.uls_importance_factor != null) addOrUpdateCard(cards, 'is-uls', 'Importance factor, Is (ULS)', fmt(final.uls_importance_factor, 2));
-        if (final.sls_importance_factor != null) addOrUpdateCard(cards, 'is-sls', 'Importance factor, Is (SLS)', fmt(final.sls_importance_factor, 2));
-      }
-
-      const table = panel.querySelector('.table');
-      if (table && uls.length && sls.length && table.dataset.slsEnhanced !== '1') {
+    const sls = data.report_data?.sls_load_distribution || [];
+    if (table && uls.length && sls.length) {
+      if (isUniform(data)) {
+        const p = uls[0] || {};
+        const s = sls[0] || {};
+        table.classList.add('uniform-load-table');
+        table.classList.remove('drift-load-table');
+        table.innerHTML = '<div class="row head"><span>Ca</span><span>ULS S (kPa)</span><span>SLS S (kPa)</span></div>' +
+          `<div class="row"><span>${fmt(p.ca)}</span><span>${fmt(p.snow_load_kpa)}</span><span>${fmt(s.snow_load_kpa)}</span></div>`;
+      } else {
+        table.classList.add('drift-load-table');
+        table.classList.remove('uniform-load-table');
         table.innerHTML = '<div class="row head"><span>x (m)</span><span>Ca</span><span>ULS S (kPa)</span><span>SLS S (kPa)</span></div>' +
-          uls.map((p, i) => {
-            const s = sls[i] || {};
-            return `<div class="row"><span>${fmt(p.x_m, 2)}</span><span>${fmt(p.ca)}</span><span>${fmt(p.snow_load_kpa)}</span><span>${fmt(s.snow_load_kpa)}</span></div>`;
-          }).join('');
-        table.dataset.slsEnhanced = '1';
+          uls.map((p, i) => `<div class="row"><span>${fmt(p.x_m, 2)}</span><span>${fmt(p.ca)}</span><span>${fmt(p.snow_load_kpa)}</span><span>${fmt(sls[i]?.snow_load_kpa)}</span></div>`).join('');
       }
-    });
-
-    return true;
+    }
+    ensureDisclaimer(panel);
   }
 
   function enhanceReport(data) {
-    const reports = [...document.querySelectorAll('#excelCalcReport')];
-    if (!reports.length) return false;
+    const report = document.querySelector('#excelCalcReport');
+    if (!report || !data) return;
+    const final = data.final_results || {};
+    const sls = data.report_data?.sls_load_distribution || [];
+    const uls = data.distribution_segments || [];
 
-    reports.forEach(report => {
-      [...report.querySelectorAll('section')].forEach(section => {
-        const h2 = section.querySelector('h2');
-        if (!h2 || !/NBCC references/i.test(h2.textContent || '')) return;
-        const table = section.querySelector('table');
-        if (!table || table.dataset.publicRefs === '1') return;
-        const head = table.querySelector('thead tr');
-        if (head) {
-          const ths = head.querySelectorAll('th');
-          if (ths.length >= 2 && /formula id/i.test(ths[0].textContent || '')) ths[0].remove();
-          if (head.querySelector('th')) setText(head.querySelector('th'), 'NBCC 2020 Reference');
-        }
-        table.querySelectorAll('tbody tr').forEach(tr => {
-          const tds = tr.querySelectorAll('td');
-          if (tds.length >= 2) tds[0].remove();
-        });
-        table.dataset.publicRefs = '1';
-      });
+    const resultSection = [...report.querySelectorAll('section')].find(s => /Snow-load results/i.test(s.querySelector('h2')?.textContent || ''));
+    const resultBody = resultSection?.querySelector('tbody');
+    if (resultBody && !resultBody.querySelector('[data-limit-state="SLS"]') && final.sls_peak_snow_load_kpa != null) {
+      const tr = document.createElement('tr');
+      tr.dataset.limitState = 'SLS';
+      tr.innerHTML = `<td>SLS governing snow load</td><td class="val">${fmt(final.sls_peak_snow_load_kpa)}</td><td>kPa</td><td>Is(SLS) = ${fmt(final.sls_importance_factor ?? 0.9, 2)}</td><td>NBCC 2020, Table 4.1.6.2.-A and Sentence 4.1.6.2.(1)</td>`;
+      resultBody.appendChild(tr);
+    }
 
-      if (!data) return;
-      const final = data.final_results || {};
-      const sls = data.report_data?.sls_load_distribution || [];
-      const uls = data.distribution_segments || [];
-
-      const resultSection = [...report.querySelectorAll('section')].find(s => /Snow-load results/i.test(s.querySelector('h2')?.textContent || ''));
-      const resultBody = resultSection?.querySelector('tbody');
-      if (resultBody && !resultBody.querySelector('[data-limit-state="SLS"]') && final.sls_peak_snow_load_kpa != null) {
-        const tr = document.createElement('tr');
-        tr.dataset.limitState = 'SLS';
-        tr.innerHTML = `<td>SLS governing snow load</td><td class="val">${fmt(final.sls_peak_snow_load_kpa)}</td><td>kPa</td><td>NBCC 2020; Is(SLS) = ${fmt(final.sls_importance_factor ?? 0.9, 2)}</td>`;
-        resultBody.appendChild(tr);
+    const distSection = [...report.querySelectorAll('section')].find(s => /^Load distribution$/i.test((s.querySelector('h2')?.textContent || '').trim()));
+    const distTable = distSection?.querySelector('table');
+    if (distTable && uls.length && sls.length) {
+      if (isUniform(data)) {
+        const p = uls[0] || {}, s = sls[0] || {};
+        distTable.innerHTML = `<thead><tr><th>Ca</th><th>ULS S (kPa)</th><th>SLS S (kPa)</th></tr></thead><tbody><tr><td>${fmt(p.ca)}</td><td>${fmt(p.snow_load_kpa)}</td><td>${fmt(s.snow_load_kpa)}</td></tr></tbody>`;
+      } else {
+        distTable.innerHTML = '<thead><tr><th>x (m)</th><th>Ca</th><th>ULS S (kPa)</th><th>SLS S (kPa)</th></tr></thead><tbody>' +
+          uls.map((p, i) => `<tr><td>${fmt(p.x_m,2)}</td><td>${fmt(p.ca)}</td><td>${fmt(p.snow_load_kpa)}</td><td>${fmt(sls[i]?.snow_load_kpa)}</td></tr>`).join('') + '</tbody>';
       }
-
-      const distSection = [...report.querySelectorAll('section')].find(s => /^Load distribution$/i.test((s.querySelector('h2')?.textContent || '').trim()));
-      const distTable = distSection?.querySelector('table');
-      if (distTable && uls.length && sls.length && distTable.dataset.slsEnhanced !== '1') {
-        const headRows = distTable.querySelectorAll('thead tr');
-        if (headRows[0]) headRows[0].innerHTML = '<th>x</th><th>Ca</th><th>ULS S</th><th>SLS S</th>';
-        if (headRows[1]) headRows[1].innerHTML = '<th>m</th><th></th><th>kPa</th><th>kPa</th>';
-        const tbody = distTable.querySelector('tbody');
-        if (tbody) tbody.innerHTML = uls.map((p, i) => `<tr><td>${fmt(p.x_m,2)}</td><td>${fmt(p.ca)}</td><td>${fmt(p.snow_load_kpa)}</td><td>${fmt(sls[i]?.snow_load_kpa)}</td></tr>`).join('');
-        distTable.dataset.slsEnhanced = '1';
-      }
-    });
-
-    return true;
+    }
   }
 
   function enhance() {
     const data = readData();
-    const resultsDone = enhanceResults(data);
-    const reportDone = enhanceReport(data);
-    return resultsDone || reportDone;
+    if (!data) return;
+    document.querySelectorAll('.panel.results').forEach(panel => enhanceResultsPanel(panel, data));
+    enhanceReport(data);
   }
 
   function scheduleEnhance() {
