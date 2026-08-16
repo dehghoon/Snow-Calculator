@@ -13,7 +13,6 @@
     if (body) body.innerHTML = '';
     pop.querySelectorAll('.help-reference, small').forEach(el => { if (el.parentElement === pop) el.style.display = 'none'; });
   }
-
   function enhance() {
     document.querySelectorAll('.help-popover').forEach(pop => {
       const label = pop.getAttribute('aria-label') || '';
@@ -27,7 +26,6 @@
       }
     });
   }
-
   new MutationObserver(enhance).observe(document.documentElement, { childList: true, subtree: true });
   enhance();
 })();
