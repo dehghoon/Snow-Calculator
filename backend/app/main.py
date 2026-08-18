@@ -14,6 +14,7 @@ if ENGINE_SRC.exists() and str(ENGINE_SRC) not in sys.path:
 from nbcc2020_roof_snow.validation.errors import InvalidInputError, InvalidRadicandError
 
 from .climatic_data import get_location_data, list_locations, list_provinces
+from .core_contract import CoreSnowRequest, CoreSnowWriteback, build_core_writeback
 from .engine_adapter import calculate
 from .reporting import build_pdf_bytes, build_report_preview
 from .schemas import CalculationRequest, CalculationResponse, ErrorResponse, ReportPreviewResponse
@@ -21,7 +22,7 @@ from .schemas import CalculationRequest, CalculationResponse, ErrorResponse, Rep
 
 app = FastAPI(
     title="NBCC 2020 Roof Snow Calculator API",
-    version="0.1.0",
+    version="0.2.0",
     description="FastAPI adapter around the validated Agent #2 NBCC 2020 roof snow engine.",
 )
 
@@ -43,10 +44,11 @@ def health() -> dict[str, str]:
 @app.get("/version")
 def version() -> dict[str, str]:
     return {
-        "api_version": "0.1.0",
+        "api_version": "0.2.0",
         "engine_package": "nbcc2020-roof-snow",
         "engine_version": "0.1.0",
         "code_edition": "NBCC 2020",
+        "core_contract": "0.2",
     }
 
 
@@ -85,6 +87,25 @@ def calculate_roof_snow(payload: CalculationRequest) -> CalculationResponse:
         message = str(exc)
         code = "ERR_SS_NONPOSITIVE" if "ERR_SS_NONPOSITIVE" in message else "ERR_INVALID_GEOMETRY"
         raise HTTPException(status_code=422, detail={"code": code, "detail": message}) from exc
+
+
+@app.post(
+    "/api/v1/core/roof-snow",
+    response_model=CoreSnowWriteback,
+    summary="Calculate roof snow and return Structural Core v0.2 load objects",
+)
+def calculate_roof_snow_for_core(payload: CoreSnowRequest) -> CoreSnowWriteback:
+    """Integrated mode used by the Linkoteq structural model.
+
+    The existing standalone UI continues to use `/api/v1/calculations/roof-snow`.
+    This endpoint runs the exact same validated calculation engine, then writes the result
+    in the canonical Core `LoadSource` + `LoadCase` + `Load` shape for the selected slab.
+    """
+    calculation = calculate_roof_snow(payload.calculation)
+    try:
+        return build_core_writeback(payload, calculation)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail={"code": "ERR_CORE_WRITEBACK", "detail": str(exc)}) from exc
 
 
 @app.post("/api/v1/reports/preview", response_model=ReportPreviewResponse)
