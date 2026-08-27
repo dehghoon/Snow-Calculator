@@ -2,39 +2,51 @@
   "project": "NBCC 2020 Roof Snow Calculator",
   "repository": "dehghoon/Snow-Calculator",
   "coreVersion": "0.5",
-  "overallStatus": "in-progress",
-  "currentStage": "Core v0.5 Integration Verified in CI",
-  "productionVerificationComplete": false,
+  "overallStatus": "complete",
+  "currentStage": "Stage 5: Production Verification COMPLETE",
+  "productionVerificationComplete": true,
+  "verifiedReleaseHead": "8ec65f3da26f5099727d712ae836aa25fd0622e7",
   "engineeringEngine": {
     "owner": "GPT-2",
     "package": "packages/nbcc2020_roof_snow_engine",
     "status": "preserved",
-    "modifiedByGPT3": false
-  },
-  "coreV05Integration": {
-    "endpoint": "POST /api/v1/core/roof-snow/v0.5",
-    "standaloneEndpointPreserved": "POST /api/v1/calculations/roof-snow",
-    "legacyCoreEndpointPreserved": "POST /api/v1/core/roof-snow",
-    "integrationCommit": "3c051290d90ee65115e085fae74832ddc4ad6c40",
-    "modelSchemaVersion": "0.5",
-    "uniformMapping": "exactly one canonical surface-pressure load on one stable target surface",
-    "nonUniformMapping": "one canonical surface-pressure load per distribution segment with one stable surface ID per segment",
-    "lossyMapping": "rejected with HTTP 422",
-    "pyniteBoundary": "No direct PyNite call; structural analysis remains behind the Core Analysis Adapter"
+    "modifiedDuringCloseout": false
   },
   "qualityGate": {
-    "workflow": ".github/workflows/quality-gate.yml",
-    "runNumber": 94,
-    "runUrl": "https://github.com/dehghoon/Snow-Calculator/actions/runs/33030736707",
-    "status": "success",
+    "workflow": "Production Quality Gate",
+    "runNumber": 103,
+    "status": "green",
     "enginePytest": "24 passed",
-    "backendPytest": "16 passed",
-    "frontendTestsAndProductionBuild": "passed",
-    "openApiVerification": "passed via backend test suite"
+    "backendPytest": "20 passed",
+    "frontendTests": "passed (--passWithNoTests)",
+    "frontendProductionBuild": "passed"
   },
-  "remainingBlockers": [
-    "Production deployment verification has not been completed.",
-    "Production smoke testing has not been completed."
+  "productionEvidence": {
+    "domain": "https://snow.linkoteq.com",
+    "representativeCalculation": {
+      "status": "passed",
+      "displayedStatus": "OK",
+      "ulsSnowLoad": "2.000 kPa",
+      "slsSnowLoad": "1.800 kPa",
+      "snowDensity": "3.060 kN/m^3",
+      "Cs": "1.000",
+      "Cb": "0.800"
+    },
+    "version": {
+      "core_contract_current": "0.5",
+      "core_contract_legacy": [
+        "0.2"
+      ]
+    },
+    "officialPdfUnauthorized": {
+      "httpStatus": 403,
+      "errorCode": "ERR_REPORT_ENTITLEMENT_REQUIRED",
+      "policy": "fail-closed"
+    }
+  },
+  "remainingReleaseBlockers": [],
+  "postStage5Tasks": [
+    "Track npm dependency vulnerabilities separately: 3 moderate, 1 high, 1 critical."
   ],
-  "nextStageMayBegin": false
+  "nextStageMayBegin": true
 }
