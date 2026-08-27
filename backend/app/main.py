@@ -16,6 +16,7 @@ from .climatic_data import get_location_data, list_locations, list_provinces
 from .core_contract import CoreSnowRequest, CoreSnowWriteback, build_core_writeback
 from .core_v05_routes import router as core_v05_router
 from .engine_adapter import calculate
+from .report_access import require_official_report_entitlement
 from .reporting import build_pdf_bytes, build_report_preview
 from .schemas import CalculationRequest, CalculationResponse, ErrorResponse, ReportPreviewResponse
 
@@ -41,13 +42,15 @@ def health() -> dict[str, str]:
 
 
 @app.get("/version")
-def version() -> dict[str, str]:
+def version() -> dict[str, object]:
     return {
         "api_version": "0.2.0",
         "engine_package": "nbcc2020-roof-snow",
         "engine_version": "0.1.0",
         "code_edition": "NBCC 2020",
-        "core_contract": "0.2",
+        "core_contract": "0.5",
+        "core_contract_current": "0.5",
+        "core_contract_legacy": ["0.2"],
     }
 
 
@@ -61,7 +64,7 @@ def climatic_locations(province: str) -> dict[str, object]:
     locations = list_locations(province)
     if not locations:
         raise HTTPException(status_code=404, detail={"code": "ERR_PROVINCE_NOT_FOUND", "detail": f"No climatic locations found for {province}."})
-    return {"province": province, "locations": locations}
+    return {"province": province, "locations": list_locations}
 
 
 @app.get("/api/v1/climatic/location")
@@ -108,11 +111,15 @@ def calculate_roof_snow_for_core(payload: CoreSnowRequest) -> CoreSnowWriteback:
 @app.post("/api/v1/reports/preview", response_model=ReportPreviewResponse)
 def report_preview(payload: CalculationRequest) -> ReportPreviewResponse:
     calculation = calculate_roof_snow(payload)
-    return build_report_preview(calculation)
+    preview = build_report_preview(calculation)
+    preview.official_pdf_available = False
+    preview.entitlement_required = True
+    return preview
 
 
 @app.post("/api/v1/reports/official")
 def official_report(payload: CalculationRequest) -> Response:
+    require_official_report_entitlement()
     calculation = calculate_roof_snow(payload)
     pdf = build_pdf_bytes(payload, calculation)
     return Response(
