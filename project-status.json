@@ -1,0 +1,40 @@
+{
+  "project": "NBCC 2020 Roof Snow Calculator",
+  "repository": "dehghoon/Snow-Calculator",
+  "coreVersion": "0.5",
+  "overallStatus": "in-progress",
+  "currentStage": "Core v0.5 Integration Verified in CI",
+  "productionVerificationComplete": false,
+  "engineeringEngine": {
+    "owner": "GPT-2",
+    "package": "packages/nbcc2020_roof_snow_engine",
+    "status": "preserved",
+    "modifiedByGPT3": false
+  },
+  "coreV05Integration": {
+    "endpoint": "POST /api/v1/core/roof-snow/v0.5",
+    "standaloneEndpointPreserved": "POST /api/v1/calculations/roof-snow",
+    "legacyCoreEndpointPreserved": "POST /api/v1/core/roof-snow",
+    "integrationCommit": "3c051290d90ee65115e085fae74832ddc4ad6c40",
+    "modelSchemaVersion": "0.5",
+    "uniformMapping": "exactly one canonical surface-pressure load on one stable target surface",
+    "nonUniformMapping": "one canonical surface-pressure load per distribution segment with one stable surface ID per segment",
+    "lossyMapping": "rejected with HTTP 422",
+    "pyniteBoundary": "No direct PyNite call; structural analysis remains behind the Core Analysis Adapter"
+  },
+  "qualityGate": {
+    "workflow": ".github/workflows/quality-gate.yml",
+    "runNumber": 94,
+    "runUrl": "https://github.com/dehghoon/Snow-Calculator/actions/runs/33030736707",
+    "status": "success",
+    "enginePytest": "24 passed",
+    "backendPytest": "16 passed",
+    "frontendTestsAndProductionBuild": "passed",
+    "openApiVerification": "passed via backend test suite"
+  },
+  "remainingBlockers": [
+    "Production deployment verification has not been completed.",
+    "Production smoke testing has not been completed."
+  ],
+  "nextStageMayBegin": false
+}
