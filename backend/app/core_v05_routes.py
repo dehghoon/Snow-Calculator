@@ -17,7 +17,8 @@ class CoreSnowV05ApiWriteback(CoreSnowV05Writeback):
 
 
 def _validate_surface_mapping(payload: CoreSnowV05Request, calculation) -> None:
-    segments = calculation.distribution_segments or []
+    is_uniform = payload.inputs.calculation.mode.value == "UNIFORM_ROOF"
+    segments = [] if is_uniform else (calculation.distribution_segments or [])
 
     if segments:
         segment_surface_ids = payload.inputs.segmentSurfaceIds or []
