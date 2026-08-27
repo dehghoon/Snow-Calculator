@@ -12,19 +12,19 @@ if ENGINE_SRC.exists() and str(ENGINE_SRC) not in sys.path:
     sys.path.insert(0, str(ENGINE_SRC))
 
 from nbcc2020_roof_snow.validation.errors import InvalidInputError, InvalidRadicandError
-
 from .climatic_data import get_location_data, list_locations, list_provinces
 from .core_contract import CoreSnowRequest, CoreSnowWriteback, build_core_writeback
+from .core_v05_routes import router as core_v05_router
 from .engine_adapter import calculate
 from .reporting import build_pdf_bytes, build_report_preview
 from .schemas import CalculationRequest, CalculationResponse, ErrorResponse, ReportPreviewResponse
-
 
 app = FastAPI(
     title="NBCC 2020 Roof Snow Calculator API",
     version="0.2.0",
     description="FastAPI adapter around the validated Agent #2 NBCC 2020 roof snow engine.",
 )
+app.include_router(core_v05_router)
 
 allowed_origins = [item.strip() for item in os.getenv("API_ALLOWED_ORIGINS", "http://localhost:5173").split(",") if item.strip()]
 app.add_middleware(
@@ -34,7 +34,6 @@ app.add_middleware(
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
-
 
 @app.get("/health")
 def health() -> dict[str, str]:
@@ -69,7 +68,7 @@ def climatic_locations(province: str) -> dict[str, object]:
 def climatic_location(province: str, location: str) -> dict[str, object]:
     record = get_location_data(province, location)
     if record is None:
-        raise HTTPException(status_code=404, detail={"code": "ERR_LOCATION_NOT_FOUND", "detail": f"No climatic data found for {location}, {province}."})
+        raise HTTPException(status_code=404, detail={"code": "ERR_LOCATION_NOT_FOUND", "detail": f"No climatic data for {location}, {province}."})
     return record
 
 
@@ -88,7 +87,6 @@ def calculate_roof_snow(payload: CalculationRequest) -> CalculationResponse:
         code = "ERR_SS_NONPOSITIVE" if "ERR_SS_NONPOSITIVE" in message else "ERR_INVALID_GEOMETRY"
         raise HTTPException(status_code=422, detail={"code": code, "detail": message}) from exc
 
-
 @app.post(
     "/api/v1/core/roof-snow",
     response_model=CoreSnowWriteback,
@@ -96,7 +94,6 @@ def calculate_roof_snow(payload: CalculationRequest) -> CalculationResponse:
 )
 def calculate_roof_snow_for_core(payload: CoreSnowRequest) -> CoreSnowWriteback:
     """Integrated mode used by the Linkoteq structural model.
-
     The existing standalone UI continues to use `/api/v1/calculations/roof-snow`.
     This endpoint runs the exact same validated calculation engine, then writes the result
     in the canonical Core `LoadSource` + `LoadCase` + `Load` shape for the selected slab.
