@@ -72,7 +72,11 @@ def calculate_roof_snow_for_core_v05(payload: CoreSnowV05Request) -> CoreSnowV05
 
     _validate_surface_mapping(payload, calculation)
 
-    writeback = build_core_v05_writeback(payload, calculation)
+    writeback_calculation = calculation
+    if payload.inputs.calculation.mode.value == "UNIFORM_ROOF":
+        writeback_calculation = calculation.model_copy(update={"distribution_segments": []})
+
+    writeback = build_core_v05_writeback(payload, writeback_calculation)
     if writeback.errors:
         raise HTTPException(
             status_code=422,
