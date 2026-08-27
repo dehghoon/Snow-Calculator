@@ -1,0 +1,52 @@
+{
+  "project": "NBCC 2020 Roof Snow Calculator",
+  "repository": "dehghoon/Snow-Calculator",
+  "coreVersion": "0.5",
+  "overallStatus": "complete",
+  "currentStage": "Stage 5: Production Verification COMPLETE",
+  "productionVerificationComplete": true,
+  "verifiedReleaseHead": "8ec65f3da26f5099727d712ae836aa25fd0622e7",
+  "engineeringEngine": {
+    "owner": "GPT-2",
+    "package": "packages/nbcc2020_roof_snow_engine",
+    "status": "preserved",
+    "modifiedDuringCloseout": false
+  },
+  "qualityGate": {
+    "workflow": "Production Quality Gate",
+    "runNumber": 103,
+    "status": "green",
+    "enginePytest": "24 passed",
+    "backendPytest": "20 passed",
+    "frontendTests": "passed (--passWithNoTests)",
+    "frontendProductionBuild": "passed"
+  },
+  "productionEvidence": {
+    "domain": "https://snow.linkoteq.com",
+    "representativeCalculation": {
+      "status": "passed",
+      "displayedStatus": "OK",
+      "ulsSnowLoad": "2.000 kPa",
+      "slsSnowLoad": "1.800 kPa",
+      "snowDensity": "3.060 kN/m^3",
+      "Cs": "1.000",
+      "Cb": "0.800"
+    },
+    "version": {
+      "core_contract_current": "0.5",
+      "core_contract_legacy": [
+        "0.2"
+      ]
+    },
+    "officialPdfUnauthorized": {
+      "httpStatus": 403,
+      "errorCode": "ERR_REPORT_ENTITLEMENT_REQUIRED",
+      "policy": "fail-closed"
+    }
+  },
+  "remainingReleaseBlockers": [],
+  "postStage5Tasks": [
+    "Track npm dependency vulnerabilities separately: 3 moderate, 1 high, 1 critical."
+  ],
+  "nextStageMayBegin": true
+}
