@@ -24,12 +24,10 @@ def test_health():
     assert response.status_code == 200
     assert response.json()["status"] == "ok"
 
-
 def test_version():
     response = client.get("/version")
     assert response.status_code == 200
     assert response.json()["engine_version"] == "0.1.0"
-
 
 def test_uniform_calculation_contract():
     response = client.post("/api/v1/calculations/roof-snow", json=BASE)
@@ -39,7 +37,6 @@ def test_uniform_calculation_contract():
     assert body["code_edition"] == "NBCC 2020"
     assert body["final_results"]["governing_snow_load_kpa"] > 0
     assert body["warnings"] == []
-
 
 def test_projection_boundary_3m_not_exempt():
     payload = {
@@ -54,11 +51,10 @@ def test_projection_boundary_3m_not_exempt():
     assert response.status_code == 200
     assert response.json()["projection_result"]["exempt"] is False
 
-
 def test_projection_under_3m_exempt():
     payload = {
         **BASE,
-        "mode": "ROOF_PROJECTION_OR_PARAPET",
+        "mode": "ROOF_PROJECTION_OR_PARAPUT",
         "projection": {
             "projection_height": 1.0,
             "projection_longest_dimension": 2.99
@@ -67,7 +63,6 @@ def test_projection_under_3m_exempt():
     response = client.post("/api/v1/calculations/roof-snow", json=payload)
     assert response.status_code == 200
     assert response.json()["projection_result"]["exempt"] is True
-
 
 def test_lower_roof_case():
     payload = {
@@ -93,7 +88,6 @@ def test_lower_roof_case():
     assert body["governing_case"]["case_id"] == "I"
     assert body["distribution_segments"]
 
-
 def test_adjacent_drift_rejects_cw_not_one():
     payload = {
         **BASE,
@@ -113,14 +107,11 @@ def test_adjacent_drift_rejects_cw_not_one():
     response = client.post("/api/v1/calculations/roof-snow", json=payload)
     assert response.status_code == 422
 
-
-def test_official_report_downloads_pdf():
+def test_official_report_denied_without_entitlement():
     response = client.post("/api/v1/reports/official", json=BASE)
-    assert response.status_code == 200
-    assert response.headers["content-type"].startswith("application/pdf")
-    assert "attachment" in response.headers["content-disposition"].lower()
-    assert response.content.startswith(b"%PDF")
-
+    assert response.status_code == 403
+    assert response.json()["detail"]["code"] == "ERR_REPORT_ENTITLEMENT_REQUIRED"
+    assert response.json()["detail"]["entitlement_required"] is True
 
 def test_openapi_generated():
     response = client.get("/openapi.json")
