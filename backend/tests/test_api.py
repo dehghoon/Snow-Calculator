@@ -54,7 +54,7 @@ def test_projection_boundary_3m_not_exempt():
 def test_projection_under_3m_exempt():
     payload = {
         **BASE,
-        "mode": "ROOF_PROJECTION_OR_PARAPUT",
+        "mode": "ROOF_PROJECTION_OR_PARAPET",
         "projection": {
             "projection_height": 1.0,
             "projection_longest_dimension": 2.99
