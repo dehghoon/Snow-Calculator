@@ -1,0 +1,89 @@
+name: Snow Production Core v0.5 Verification
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/production-core-v05-verification.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  verify-production:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify deployed Snow API and canonical Core writeback
+        env:
+          API_BASE_URL: https://snow.linkoteq.com
+        run: |
+          mkdir -p verification-artifacts
+          python3 - <<'PY'
+          import json, os, time, urllib.request, urllib.error
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          base = os.environ["API_BASE_URL"].rstrip("/")
+          report = {"timestamp_utc": datetime.now(timezone.utc).isoformat(),
+                    "api_base_url": base, "core_schema": "0.5",
+                    "checks": {}, "status": "FAIL"}
+          dest = Path("verification-artifacts/snow-production-core-v05.json")
+
+          def request(path, payload=None):
+              body = None if payload is None else json.dumps(payload).encode()
+              req = urllib.request.Request(base + path, data=body,
+                  headers={"Accept":"application/json", **({"Content-Type":"application/json"} if body else {})},
+                  method="POST" if body else "GET")
+              for attempt in range(3):
+                  try:
+                      with urllib.request.urlopen(req, timeout=50) as response:
+                          return response.status, json.load(response)
+                  except (urllib.error.URLError, TimeoutError) as exc:
+                      if attempt == 2 or isinstance(exc, urllib.error.HTTPError):
+                          raise RuntimeError(f"{path}: {exc}") from exc
+                      time.sleep(8)
+
+          def check(name, passed):
+              report["checks"][name] = "PASS" if passed else "FAIL"
+              if not passed: raise AssertionError(name)
+
+          uniform = {"mode":"UNIFORM_ROOF","common":{"ss":2.5,"sr_climatic":0.4,
+              "roof_slope_alpha":10,"roof_surface_type":"normal","is":1.0,"cw":1.0,"cb":0.8}}
+          payload = {"modelSchemaVersion":"0.5","projectId":"SNOW-PROD-SMOKE",
+              "runId":"SNOW-PROD-RUN-001","calculator":"snow","calculatorVersion":"0.1.0",
+              "targetIds":["ROOF-SMOKE-001"],"inputs":{"calculation":uniform}}
+          try:
+              status, health = request("/api/health")
+              check("health", status == 200)
+              status, version = request("/api/version")
+              check("version", status == 200 and isinstance(version, dict))
+              status, openapi = request("/api/openapi.json")
+              check("core_route", status == 200 and "/api/v1/core/roof-snow/v0.5" in openapi.get("paths",{}))
+              code, standalone = request("/api/v1/calculations/roof-snow", uniform)
+              check("standalone", code == 200 and standalone.get("calculation_status") == "OK")
+              code, core = request("/api/v1/core/roof-snow/v0.5", payload)
+              check("core_response", code == 200 and core.get("modelSchemaVersion") == "0.5")
+              check("identity", core.get("projectId") == payload["projectId"] and
+                    core.get("runId") == payload["runId"] and core.get("targetIds") == payload["targetIds"])
+              loads = core.get("loads",[])
+              check("canonical_load", len(loads) == 1 and loads[0].get("type") == "surface-pressure"
+                    and loads[0].get("surfaceId") == "ROOF-SMOKE-001"
+                    and loads[0].get("pressure",{}).get("unit") == "kPa")
+              check("pressure_parity", abs(loads[0]["pressure"]["value"] -
+                    standalone["final_results"]["governing_snow_load_kpa"]) < 1e-8)
+              check("provenance", loads[0].get("provenance",{}).get("calculatorRunId") == payload["runId"])
+              report["status"] = "PASS"
+          except Exception as exc:
+              report["error"] = str(exc)
+              raise
+          finally:
+              dest.write_text(json.dumps(report, indent=2)+"\n")
+              print(json.dumps(report, indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: snow-production-core-v05-evidence
+          path: verification-artifacts/snow-production-core-v05.json
