@@ -64,7 +64,7 @@ def climatic_locations(province: str) -> dict[str, object]:
     locations = list_locations(province)
     if not locations:
         raise HTTPException(status_code=404, detail={"code": "ERR_PROVINCE_NOT_FOUND", "detail": f"No climatic locations found for {province}."})
-    return {"province": province, "locations": list_locations}
+    return {"province": province, "locations": locations}
 
 
 @app.get("/api/v1/climatic/location")
