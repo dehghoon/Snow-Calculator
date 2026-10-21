@@ -55,6 +55,12 @@ jobs:
               "runId":"SNOW-PROD-RUN-001","calculator":"snow","calculatorVersion":"0.1.0",
               "targetIds":["ROOF-SMOKE-001"],"inputs":{"calculation":uniform}}
           try:
+              for probe in ("/api/health", "/health", "/api/version", "/version", "/api/openapi.json", "/openapi.json"):
+                  try:
+                      code, body = request(probe)
+                      report.setdefault("routing_diagnostics", {})[probe] = {"status":code,"body":str(body)[:200]}
+                  except Exception as exc:
+                      report.setdefault("routing_diagnostics", {})[probe] = {"error":str(exc)}
               status, health = request("/api/health")
               check("health", status == 200)
               status, version = request("/api/version")
