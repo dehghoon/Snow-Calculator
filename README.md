@@ -57,3 +57,13 @@ Calculation results and report preview are available without subscription gating
 ## Engineering boundary
 
 The Agent #2 engine is preserved unchanged. This application formats, validates at the API boundary, visualizes and reports engine outputs, but does not change formulas, ratios, warnings, units or applicability rules.
+
+## Structural Core compatibility target (Revision 6)
+
+Canonical contract: [Linkoteq Structural Core](https://github.com/dehghoon/linkoteq-structural-core/blob/main/CORE_CONTRACT.md).
+
+- Target Core package: `v0.6.0`; target model schema: `0.6`.
+- Legacy model schema `0.5` remains supported at the Core contract boundary.
+- This declaration is a migration target, not proof that this repository's runtime dependency, API, importer mapping, or deployment has migrated.
+- Existing engineering calculation and application behavior is unchanged by this documentation update.
+- The Core `v0.6.0` GitHub Release must be verified separately from the version on `main`.
