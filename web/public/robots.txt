@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://snow.linkoteq.com/sitemap.xml
