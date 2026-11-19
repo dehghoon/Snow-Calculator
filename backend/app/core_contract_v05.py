@@ -28,6 +28,10 @@ class CoreSnowV05Request(BaseModel):
     targetIds: list[str]
     inputs: CoreSnowInputs
 
+
+class CoreSnowV06Request(CoreSnowV05Request):
+    modelSchemaVersion: Literal["0.6"] = "0.6"
+
 class CoreLoadSource(BaseModel):
     id: str
     category: Literal["snow"] = "snow"
@@ -65,7 +69,7 @@ class CoreSurfacePressureLoad(BaseModel):
 
 class CoreSnowV05Writeback(BaseModel):
     runId: str
-    modelSchemaVersion: Literal["0.5"] = CORE_SCHEMA_VERSION
+    modelSchemaVersion: Literal["0.5", "0.6"] = CORE_SCHEMA_VERSION
     loadSources: list[CoreLoadSource] = Field(default_factory=list)
     loadCases: list[CoreLoadCase] = Field(default_factory=list)
     loads: list[CoreSurfacePressureLoad] = Field(default_factory=list)
@@ -106,7 +110,7 @@ def build_core_v05_writeback(payload: CoreSnowV05Request, calculation: Calculati
     errors = list(calculation.errors)
     loads: list[CoreSurfacePressureLoad] = []
     trace: list[dict[str, Any]] = [
-        {"stage": "core_contract", "status": "PASS", "schemaVersion": CORE_SCHEMA_VERSION},
+        {"stage": "core_contract", "status": "PASS", "schemaVersion": payload.modelSchemaVersion},
         {"stage": "snow_calculation", "status": calculation.calculation_status, "engineeringEnginePreserved": True},
     ]
 
@@ -174,6 +178,7 @@ def build_core_v05_writeback(payload: CoreSnowV05Request, calculation: Calculati
         source.status = "error"
 
     return CoreSnowV05Writeback(
+        modelSchemaVersion=payload.modelSchemaVersion,
         runId=payload.runId,
         loadSources=[source],
         loadCases=[load_case],

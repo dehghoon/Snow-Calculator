@@ -175,3 +175,27 @@ def test_standalone_benchmark_remains_unchanged():
     assert body["code_edition"] == "NBCC 2020"
     assert body["final_results"]["governing_snow_load_kpa"] > 0
     assert body["warnings"] == []
+
+
+def test_core_v06_preserves_snow_pressure_units_ids_and_legacy_response():
+    payload = core_payload(deepcopy(UNIFORM), ["SURFACE-ROOF-001"])
+    legacy = client.post("/api/v1/core/roof-snow/v0.5", json=payload)
+    assert legacy.status_code == 200
+    payload["modelSchemaVersion"] = "0.6"
+    current = client.post("/api/v1/core/roof-snow/v0.6", json=payload)
+    assert current.status_code == 200, current.text
+    old, new = legacy.json(), current.json()
+    assert old["modelSchemaVersion"] == "0.5"
+    assert new["modelSchemaVersion"] == "0.6"
+    assert new["loads"] == old["loads"]
+    assert new["loadCases"] == old["loadCases"]
+    assert new["projectId"] == old["projectId"]
+    assert next(t for t in new["trace"] if t["stage"] == "core_contract")["schemaVersion"] == "0.6"
+    payload["modelSchemaVersion"] = "0.7"
+    assert client.post("/api/v1/core/roof-snow/v0.6", json=payload).status_code == 422
+
+
+def test_core_v06_retains_nonuniform_surface_mapping_validation():
+    payload = core_payload(deepcopy(NON_UNIFORM), ["SURFACE-ROOF-001"])
+    payload["modelSchemaVersion"] = "0.6"
+    assert client.post("/api/v1/core/roof-snow/v0.6", json=payload).status_code == 422

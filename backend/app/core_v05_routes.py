@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException
 
 from .core_contract_v05 import (
     CoreSnowV05Request,
+    CoreSnowV06Request,
     CoreSnowV05Writeback,
     build_core_v05_writeback,
 )
@@ -88,3 +89,8 @@ def calculate_roof_snow_for_core_v05(payload: CoreSnowV05Request) -> CoreSnowV05
         projectId=payload.projectId,
         targetIds=payload.targetIds,
     )
+
+
+@router.post("/api/v1/core/roof-snow/v0.6", response_model=CoreSnowV05ApiWriteback)
+def calculate_roof_snow_for_core_v06(payload: CoreSnowV06Request) -> CoreSnowV05ApiWriteback:
+    return calculate_roof_snow_for_core_v05(payload)
