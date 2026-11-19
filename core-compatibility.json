@@ -1,6 +1,10 @@
 {
   "componentId": "snow-calculator",
-  "coreSchemaVersion": "0.5",
+  "coreSchemaVersion": "0.6",
   "policy": "canonical-main-required",
-  "note": "CI checks current canonical Core; release blocking additionally requires repository branch protection"
+  "note": "CI checks current canonical Core; release blocking additionally requires repository branch protection",
+  "supportedSchemaVersions": [
+    "0.5",
+    "0.6"
+  ]
 }
